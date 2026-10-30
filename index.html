@@ -1,0 +1,2143 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-[#F4F6F8] text-[#121C2A]">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visor Interactivo de Reporte de Gestión de Cuadrillas</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS (XLSX Parser) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#E5F6FD',
+                            500: '#009EE0',
+                            600: '#0080B8',
+                            700: '#00668F',
+                            900: '#121C2A'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(226, 232, 240, 0.6); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0, 158, 224, 0.35); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0, 158, 224, 0.7); }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased bg-[#F4F6F8] text-[#121C2A] custom-scrollbar overflow-x-hidden">
+
+    <header class="border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-[#009EE0]/15 border border-[#009EE0]/30 flex items-center justify-center text-[#009EE0] font-bold">
+                    <i class="fa-solid fa-chart-line text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-[#121C2A] leading-tight">Visor de Gestión de Cuadrillas</h1>
+                    <p class="text-xs text-slate-500">Plataforma Consolidada de Efectividad y No Efectividad Operativa (Nacional)</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-[#2DCC71]/10 text-[#2DCC71] border border-[#2DCC71]/20">
+                    <span class="w-1.5 h-1.5 rounded-full bg-[#2DCC71] animate-pulse"></span> Norte / Lima / Centro / Sur
+                </span>
+                <button id="btnDescargarCompleto" onclick="exportarReporteCompleto()" class="hidden text-xs font-bold px-3 py-1.5 rounded-lg transition hover:brightness-95 shadow-sm flex items-center gap-1.5" style="background-color:#FFB800; color:#121C2A;">
+                    <i class="fa-solid fa-file-excel"></i> Descargar Reporte (Excel)
+                </button>
+                <button id="btnReset" onclick="resetDashboard()" class="hidden text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-[#121C2A] px-3 py-1.5 rounded-lg border border-slate-200 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate-right"></i> Reiniciar
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col space-y-6">
+
+        <!-- FILE UPLOAD DROPZONE -->
+        <div id="dropZone" class="border-2 border-dashed border-slate-200 hover:border-[#009EE0] bg-white hover:bg-[#EAF7FC] transition-all rounded-xl px-4 py-3 cursor-pointer relative overflow-hidden group shadow-sm">
+            <input type="file" id="fileInput" multiple accept=".xlsx, .xls, .csv" class="hidden" onchange="handleFileSelect(event)">
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 pointer-events-none">
+                <div class="w-9 h-9 shrink-0 rounded-lg bg-[#009EE0]/10 border border-[#009EE0]/20 flex items-center justify-center text-[#009EE0] group-hover:scale-110 transition-transform">
+                    <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
+                </div>
+                <div class="text-center sm:text-left">
+                    <p class="text-sm font-semibold text-slate-700">Arrastra tu archivo Excel aquí o <span class="text-[#009EE0] underline decoration-[#009EE0]/50">selecciona un archivo</span></p>
+                    <p class="text-[11px] text-slate-500">Soporta reportes de <strong class="text-slate-600">Zona Norte, Lima, Centro y Sur</strong> (.xlsx, .xls)</p>
+                </div>
+                <div class="hidden md:flex items-center gap-3 text-[11px] text-slate-500 sm:ml-4">
+                    <span><i class="fa-solid fa-check text-[#2DCC71] mr-1"></i>Detección dinámica de columnas</span>
+                    <span>•</span>
+                    <span><i class="fa-solid fa-filter text-[#009EE0] mr-1"></i>Validación estricta de Status</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- LOADING INDICATOR -->
+        <div id="loadingState" class="hidden flex flex-col items-center justify-center py-12 space-y-3">
+            <div class="w-10 h-10 border-4 border-[#009EE0]/20 border-t-[#009EE0] rounded-full animate-spin"></div>
+            <p class="text-sm font-medium text-slate-600" id="loadingText">Procesando pestañas del reporte Excel...</p>
+        </div>
+
+        <!-- DASHBOARD CONTENT (HIDDEN UNTIL LOADED) -->
+        <div id="dashboardContent" class="hidden flex-col space-y-6">
+
+            <!-- GLOBAL FILTER BAR -->
+            <div class="bg-white border border-[#009EE0]/30 rounded-2xl p-4 flex flex-wrap items-end gap-4 shadow-lg">
+                <div class="flex items-center gap-2.5 flex-1 min-w-[230px] relative">
+                    <div class="w-9 h-9 rounded-xl bg-[#009EE0]/10 border border-[#009EE0]/20 flex items-center justify-center text-[#009EE0] shrink-0">
+                        <i class="fa-solid fa-calendar-days text-sm"></i>
+                    </div>
+                    <div class="flex-1 min-w-0 relative">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Hoja / Fecha</label>
+                        <button type="button" onclick="toggleHojaDropdown()" id="btnFilterHoja" class="w-full bg-slate-100 border border-slate-200 text-xs font-bold text-[#121C2A] rounded-lg px-3 py-2 focus:outline-none focus:border-[#009EE0] cursor-pointer text-left flex items-center justify-between gap-2">
+                            <span id="lblFilterHoja" class="truncate">TODAS LAS HOJAS / FECHAS</span>
+                            <i class="fa-solid fa-chevron-down text-[10px] text-slate-500 shrink-0"></i>
+                        </button>
+                        <div id="panelFilterHoja" class="hidden absolute z-30 mt-1 w-72 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-2xl p-2 custom-scrollbar">
+                            <div class="flex items-center justify-between px-1 py-1 mb-1 border-b border-slate-200">
+                                <span class="text-[10px] text-slate-500">Selecciona 1 o más (ej. 2-3 días a comparar)</span>
+                                <div class="flex items-center gap-2 shrink-0 ml-2">
+                                    <button type="button" onclick="seleccionarTodasHojas()" class="text-[10px] font-semibold text-[#009EE0] hover:text-[#0077A8]">Todas</button>
+                                    <span class="text-slate-600">|</span>
+                                    <button type="button" onclick="limpiarHojas()" class="text-[10px] font-semibold text-slate-500 hover:text-slate-700">Ninguna</button>
+                                </div>
+                            </div>
+                            <div id="listaHojas"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2.5 flex-1 min-w-[230px] relative">
+                    <div class="w-9 h-9 rounded-xl bg-[#2DCC71]/10 border border-[#2DCC71]/20 flex items-center justify-center text-[#2DCC71] shrink-0">
+                        <i class="fa-solid fa-map text-sm"></i>
+                    </div>
+                    <div class="flex-1 min-w-0 relative">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Departamento</label>
+                        <button type="button" onclick="toggleDeptoDropdown()" id="btnFilterDepartamento" class="w-full bg-slate-100 border border-slate-200 text-xs font-bold text-[#121C2A] rounded-lg px-3 py-2 focus:outline-none focus:border-[#009EE0] cursor-pointer text-left flex items-center justify-between gap-2">
+                            <span id="lblFilterDepartamento" class="truncate">TODOS LOS DEPARTAMENTOS</span>
+                            <i class="fa-solid fa-chevron-down text-[10px] text-slate-500 shrink-0"></i>
+                        </button>
+                        <div id="panelFilterDepartamento" class="hidden absolute z-30 mt-1 w-72 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-2xl p-2 custom-scrollbar">
+                            <div class="flex items-center justify-between px-1 py-1 mb-1 border-b border-slate-200">
+                                <span class="text-[10px] text-slate-500">Selecciona 1 o más departamentos</span>
+                                <div class="flex items-center gap-2 shrink-0 ml-2">
+                                    <button type="button" onclick="seleccionarTodosDeptos()" class="text-[10px] font-semibold text-[#009EE0] hover:text-[#0077A8]">Todos</button>
+                                    <span class="text-slate-600">|</span>
+                                    <button type="button" onclick="limpiarDeptos()" class="text-[10px] font-semibold text-slate-500 hover:text-slate-700">Ninguno</button>
+                                </div>
+                            </div>
+                            <div id="listaDeptos"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2.5 flex-1 min-w-[230px] relative">
+                    <div class="w-9 h-9 rounded-xl bg-[#E67E22]/10 border border-[#E67E22]/20 flex items-center justify-center text-[#E67E22] shrink-0">
+                        <i class="fa-solid fa-location-dot text-sm"></i>
+                    </div>
+                    <div class="flex-1 min-w-0 relative">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Distrito (Col I)</label>
+                        <button type="button" onclick="toggleDistritoDropdown()" id="btnFilterDistrito" class="w-full bg-slate-100 border border-slate-200 text-xs font-bold text-[#121C2A] rounded-lg px-3 py-2 focus:outline-none focus:border-[#009EE0] cursor-pointer text-left flex items-center justify-between gap-2">
+                            <span id="lblFilterDistrito" class="truncate">TODOS LOS DISTRITOS</span>
+                            <i class="fa-solid fa-chevron-down text-[10px] text-slate-500 shrink-0"></i>
+                        </button>
+                        <div id="panelFilterDistrito" class="hidden absolute z-30 mt-1 w-72 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-2xl p-2 custom-scrollbar">
+                            <div class="flex items-center justify-between px-1 py-1 mb-1 border-b border-slate-200">
+                                <span class="text-[10px] text-slate-500">Selecciona 1 o más distritos</span>
+                                <div class="flex items-center gap-2 shrink-0 ml-2">
+                                    <button type="button" onclick="seleccionarTodosDistritos()" class="text-[10px] font-semibold text-[#009EE0] hover:text-[#0077A8]">Todos</button>
+                                    <span class="text-slate-600">|</span>
+                                    <button type="button" onclick="limpiarDistritos()" class="text-[10px] font-semibold text-slate-500 hover:text-slate-700">Ninguno</button>
+                                </div>
+                            </div>
+                            <div id="listaDistritos"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2.5 flex-1 min-w-[230px] relative">
+                    <div class="w-9 h-9 rounded-xl bg-[#0077A8]/10 border border-[#0077A8]/20 flex items-center justify-center text-[#0077A8] shrink-0">
+                        <i class="fa-solid fa-user-gear text-sm"></i>
+                    </div>
+                    <div class="flex-1 min-w-0 relative">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Técnico / Cuadrilla</label>
+                        <button type="button" onclick="toggleTecnicoDropdown()" id="btnFilterTecnico" class="w-full bg-slate-100 border border-slate-200 text-xs font-bold text-[#121C2A] rounded-lg px-3 py-2 focus:outline-none focus:border-[#009EE0] cursor-pointer text-left flex items-center justify-between gap-2">
+                            <span id="lblFilterTecnico" class="truncate">TODOS LOS TÉCNICOS</span>
+                            <i class="fa-solid fa-chevron-down text-[10px] text-slate-500 shrink-0"></i>
+                        </button>
+                        <div id="panelFilterTecnico" class="hidden absolute z-30 mt-1 w-72 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-2xl p-2 custom-scrollbar">
+                            <div class="flex items-center justify-between px-1 py-1 mb-1 border-b border-slate-200">
+                                <span class="text-[10px] text-slate-500">Selecciona 1 o más técnicos</span>
+                                <div class="flex items-center gap-2 shrink-0 ml-2">
+                                    <button type="button" onclick="seleccionarTodosTecnicos()" class="text-[10px] font-semibold text-[#009EE0] hover:text-[#0077A8]">Todos</button>
+                                    <span class="text-slate-600">|</span>
+                                    <button type="button" onclick="limpiarTecnicos()" class="text-[10px] font-semibold text-slate-500 hover:text-slate-700">Ninguno</button>
+                                </div>
+                            </div>
+                            <div id="listaTecnicos"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2.5 flex-1 min-w-[230px] relative">
+                    <div class="w-9 h-9 rounded-xl bg-[#8E44AD]/10 border border-[#8E44AD]/20 flex items-center justify-center text-[#8E44AD] shrink-0">
+                        <i class="fa-solid fa-screwdriver-wrench text-sm"></i>
+                    </div>
+                    <div class="flex-1 min-w-0 relative">
+                        <label class="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Tipo de Servicio</label>
+                        <button type="button" onclick="toggleServicioDropdown()" id="btnFilterServicio" class="w-full bg-slate-100 border border-slate-200 text-xs font-bold text-[#121C2A] rounded-lg px-3 py-2 focus:outline-none focus:border-[#009EE0] cursor-pointer text-left flex items-center justify-between gap-2">
+                            <span id="lblFilterServicio" class="truncate">TODOS LOS SERVICIOS</span>
+                            <i class="fa-solid fa-chevron-down text-[10px] text-slate-500 shrink-0"></i>
+                        </button>
+                        <div id="panelFilterServicio" class="hidden absolute z-30 mt-1 w-72 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-2xl p-2 custom-scrollbar">
+                            <div class="flex items-center justify-between px-1 py-1 mb-1 border-b border-slate-200">
+                                <span class="text-[10px] text-slate-500">Selecciona 1 o más tipos de servicio</span>
+                                <div class="flex items-center gap-2 shrink-0 ml-2">
+                                    <button type="button" onclick="seleccionarTodosServicios()" class="text-[10px] font-semibold text-[#009EE0] hover:text-[#0077A8]">Todos</button>
+                                    <span class="text-slate-600">|</span>
+                                    <button type="button" onclick="limpiarServicios()" class="text-[10px] font-semibold text-slate-500 hover:text-slate-700">Ninguno</button>
+                                </div>
+                            </div>
+                            <div id="listaServicios"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 shrink-0">
+                    <span id="lblFilterCount" class="text-xs text-slate-500 whitespace-nowrap"></span>
+                    <button onclick="clearGlobalFilters()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-[#121C2A] px-3 py-2 rounded-lg border border-slate-200 transition flex items-center gap-1.5 h-[34px]">
+                        <i class="fa-solid fa-filter-circle-xmark"></i> Limpiar
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- KPI 1 -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+                    <div class="flex items-center justify-between text-slate-500 mb-2">
+                        <span class="text-xs font-semibold uppercase tracking-wider">Total SOTs Validadas</span>
+                        <div class="w-8 h-8 rounded-lg bg-[#009EE0]/10 border border-[#009EE0]/20 flex items-center justify-center text-[#009EE0]">
+                            <i class="fa-solid fa-list-check"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <span id="kpiTotalSots" class="text-3xl font-black text-[#121C2A]">0</span>
+                        <p class="text-xs text-slate-500 mt-1" id="kpiFilesCount">1 archivo(s) procesado(s)</p>
+                    </div>
+                </div>
+
+                <!-- KPI 2 -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+                    <div class="flex items-center justify-between text-slate-500 mb-2">
+                        <span class="text-xs font-semibold uppercase tracking-wider">% Efectividad (Atendidos)</span>
+                        <div class="w-8 h-8 rounded-lg bg-[#2DCC71]/10 border border-[#2DCC71]/20 flex items-center justify-center text-[#2DCC71]">
+                            <i class="fa-solid fa-circle-check"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex items-baseline gap-2">
+                            <span id="kpiEfectividadPct" class="text-3xl font-black text-[#2DCC71]">0%</span>
+                            <span id="kpiEfectividadCount" class="text-xs text-slate-500">(0 SOTs)</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1">Atendido + Cerrado + Remoto</p>
+                    </div>
+                </div>
+
+                <!-- KPI 3 -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+                    <div class="flex items-center justify-between text-slate-500 mb-2">
+                        <span class="text-xs font-semibold uppercase tracking-wider">% No Efectivo Operativo</span>
+                        <div class="w-8 h-8 rounded-lg bg-[#E74C3C]/10 border border-[#E74C3C]/20 flex items-center justify-center text-[#E74C3C]">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex items-baseline gap-2">
+                            <span id="kpiIneficienciaPct" class="text-3xl font-black text-[#E74C3C]">0%</span>
+                            <span id="kpiIneficienciaCount" class="text-xs text-slate-500">(0 SOTs)</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1">Reprogramado, Ausente, Rechazo, etc.</p>
+                    </div>
+                </div>
+
+                <!-- KPI 4 -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+                    <div class="flex items-center justify-between text-slate-500 mb-2">
+                        <span class="text-xs font-semibold uppercase tracking-wider">En Proceso / Pendientes</span>
+                        <div class="w-8 h-8 rounded-lg bg-[#E67E22]/10 border border-[#E67E22]/20 flex items-center justify-center text-[#E67E22]">
+                            <i class="fa-solid fa-clock"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex items-baseline gap-2">
+                            <span id="kpiProcesoPct" class="text-3xl font-black text-[#E67E22]">0%</span>
+                            <span id="kpiProcesoCount" class="text-xs text-slate-500">(0 SOTs)</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-1">Visita / Proceso de atención</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- CHART 1: STATUS DISTRIBUTION -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col">
+                    <h2 class="text-sm font-bold text-[#121C2A] mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-pie text-[#009EE0]"></i> Distribución por Status
+                    </h2>
+                    <div class="relative flex-1 min-h-[240px] flex items-center justify-center">
+                        <canvas id="chartStatus"></canvas>
+                    </div>
+                </div>
+
+                <!-- CHART 2: DEPARTMENT PERFORMANCE -->
+                <div class="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col lg:col-span-2">
+                    <h2 class="text-sm font-bold text-[#121C2A] mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-column text-[#009EE0]"></i> Rendimiento por Departamento / Zona
+                    </h2>
+                    <div class="relative flex-1 min-h-[240px]">
+                        <canvas id="chartDeptos"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xl">
+                <!-- TAB HEADERS -->
+                <div class="border-b border-slate-200 bg-white px-4 pt-3 flex flex-wrap gap-2">
+                    <button onclick="switchTab('deptos')" id="tabBtnDeptos" class="px-4 py-2 text-xs font-semibold rounded-t-xl transition border-b-2 border-[#009EE0] text-[#009EE0] bg-[#A1E2F5]/40">
+                        <i class="fa-solid fa-map-location-dot mr-1.5"></i> Resumen Departamental
+                    </button>
+                    <button onclick="switchTab('status')" id="tabBtnStatus" class="px-4 py-2 text-xs font-semibold rounded-t-xl transition border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+                        <i class="fa-solid fa-list-check mr-1.5"></i> Distribución por Status
+                    </button>
+                    <button onclick="switchTab('motivos')" id="tabBtnMotivos" class="px-4 py-2 text-xs font-semibold rounded-t-xl transition border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+                        <i class="fa-solid fa-circle-exclamation mr-1.5"></i> Motivos Estado / Sub Estado
+                    </button>
+                    <button onclick="switchTab('servicios')" id="tabBtnServicios" class="px-4 py-2 text-xs font-semibold rounded-t-xl transition border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+                        <i class="fa-solid fa-screwdriver-wrench mr-1.5"></i> Categoría de Servicios
+                    </button>
+                    <button onclick="switchTab('tecservicios')" id="tabBtnTecservicios" class="px-4 py-2 text-xs font-semibold rounded-t-xl transition border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+                        <i class="fa-solid fa-user-gear mr-1.5"></i> Producción por Servicios
+                    </button>
+                    <button onclick="switchTab('tecnicos')" id="tabBtnTecnicos" class="px-4 py-2 text-xs font-semibold rounded-t-xl transition border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+                        <i class="fa-solid fa-users text-xs mr-1.5"></i> Producción Técnicos
+                    </button>
+                    <button onclick="switchTab('productividad')" id="tabBtnProductividad" class="px-4 py-2 text-xs font-semibold rounded-t-xl transition border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+                        <i class="fa-solid fa-gauge-high mr-1.5"></i> Productividad por Cuadrilla
+                    </button>
+                    <button onclick="switchTab('distritos')" id="tabBtnDistritos" class="px-4 py-2 text-xs font-semibold rounded-t-xl transition border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+                        <i class="fa-solid fa-city mr-1.5"></i> Auditoría Distrital
+                    </button>
+                    <button onclick="switchTab('detalle')" id="tabBtnDetalle" class="px-4 py-2 text-xs font-semibold rounded-t-xl transition border-b-2 border-transparent text-slate-500 hover:text-slate-700">
+                        <i class="fa-solid fa-table-list mr-1.5"></i> Registros Consolidados
+                    </button>
+                </div>
+
+                <!-- TAB CONTENTS -->
+                <div class="p-4">
+                    <!-- TAB 1: DEPARTAMENTAL -->
+                    <div id="tabContentDeptos" class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-left text-xs text-slate-600">
+                            <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider">
+                                <tr>
+                                    <th class="py-3 px-4 rounded-l-lg">Departamento</th>
+                                    <th class="py-3 px-4">Zona</th>
+                                    <th class="py-3 px-4 text-center">Total SOTs</th>
+                                    <th class="py-3 px-4 text-center">Atendidos</th>
+                                    <th class="py-3 px-4 text-center">No Efectivos</th>
+                                    <th class="py-3 px-4 text-center">% Efectividad</th>
+                                    <th class="py-3 px-4 rounded-r-lg text-center">% No Efectivo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbDeptos" class="divide-y divide-slate-100 font-medium"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- TAB STATUS: DISTRIBUCION POR STATUS -->
+                    <div id="tabContentStatus" class="hidden overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-left text-xs text-slate-600">
+                            <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider">
+                                <tr>
+                                    <th class="py-3 px-4 rounded-l-lg">Status Normalizado</th>
+                                    <th class="py-3 px-4">Clasificación</th>
+                                    <th class="py-3 px-4 text-center">Cantidad</th>
+                                    <th class="py-3 px-4 rounded-r-lg text-center">% del Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbStatus" class="divide-y divide-slate-100 font-medium"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- TAB MOTIVOS: ESTADO (Col Q) + SUB ESTADO (Col R) -->
+                    <div id="tabContentMotivos" class="hidden space-y-4">
+                        <div class="flex flex-wrap items-center gap-2" id="chipsMotivos"></div>
+                        <div class="grid grid-cols-1 xl:grid-cols-5 gap-4">
+                            <div class="xl:col-span-3 overflow-x-auto custom-scrollbar max-h-[28rem] overflow-y-auto">
+                                <table class="w-full text-left text-xs text-slate-600">
+                                    <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider sticky top-0">
+                                        <tr>
+                                            <th class="py-3 px-4 rounded-l-lg">Estado</th>
+                                            <th class="py-3 px-4">Sub estado (Obs.)</th>
+                                            <th class="py-3 px-4 text-center">Cantidad</th>
+                                            <th class="py-3 px-4 text-center">% del total</th>
+                                            <th class="py-3 px-4 rounded-r-lg text-center">% del estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbMotivos" class="divide-y divide-slate-100 font-medium"></tbody>
+                                </table>
+                            </div>
+                            <div class="xl:col-span-2">
+                                <p class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Top motivos de no efectividad (cantidad)</p>
+                                <div class="relative h-80"><canvas id="chartMotivos"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB SERVICIOS: CATEGORIA DE SERVICIOS (Col K) -->
+                    <div id="tabContentServicios" class="hidden overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-left text-xs text-slate-600">
+                            <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider">
+                                <tr>
+                                    <th class="py-3 px-4 rounded-l-lg">Categoría</th>
+                                    <th class="py-3 px-4 text-center">Total SOTs</th>
+                                    <th class="py-3 px-4 text-center">Efectivas</th>
+                                    <th class="py-3 px-4 text-center">% Efectividad</th>
+                                    <th class="py-3 px-4 text-center">No Efectivas</th>
+                                    <th class="py-3 px-4 rounded-r-lg text-center">% No Efectivo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbServicios" class="divide-y divide-slate-100 font-medium"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- TAB TECSERVICIOS: PRODUCCION POR SERVICIOS (Tecnicos x Categoria) -->
+                    <div id="tabContentTecservicios" class="hidden overflow-x-auto custom-scrollbar">
+                        <div class="mb-3 flex justify-between items-center gap-4">
+                            <input type="text" id="searchTecServicios" placeholder="Buscar técnico..." onkeyup="filterTecServiciosTable()" class="bg-slate-100 border border-slate-200 text-xs text-[#121C2A] rounded-lg px-3 py-1.5 w-64 focus:outline-none focus:border-[#009EE0]">
+                            <span id="lblCountTecServicios" class="text-xs text-slate-500"></span>
+                        </div>
+                        <table class="w-full text-left text-xs text-slate-600">
+                            <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider">
+                                <tr>
+                                    <th class="py-3 px-4 rounded-l-lg">Técnico / Cuadrilla</th>
+                                    <th class="py-3 px-4">Departamento</th>
+                                    <th class="py-3 px-4 text-center">Instalación</th>
+                                    <th class="py-3 px-4 text-center">Mantenimiento</th>
+                                    <th class="py-3 px-4 text-center">Migración</th>
+                                    <th class="py-3 px-4 text-center">Postventa</th>
+                                    <th class="py-3 px-4 text-center">Total SOTs</th>
+                                    <th class="py-3 px-4 text-center">Efectivas</th>
+                                    <th class="py-3 px-4 text-center">No Efectivas</th>
+                                    <th class="py-3 px-4 rounded-r-lg text-center">Prom. Diario</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbTecServicios" class="divide-y divide-slate-100 font-medium"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- TAB 2: TECNICOS -->
+                    <div id="tabContentTecnicos" class="hidden overflow-x-auto custom-scrollbar">
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                            <div class="bg-white border border-slate-200 rounded-2xl p-5">
+                                <h2 class="text-sm font-bold text-[#121C2A] mb-4 flex items-center gap-2">
+                                    <i class="fa-solid fa-arrow-trend-down" style="color:#E74C3C"></i> Top Cuadrillas por No Efectividad (%)
+                                </h2>
+                                <div class="relative h-[480px]">
+                                    <canvas id="chartTopIneficiencia"></canvas>
+                                </div>
+                            </div>
+                            <div class="bg-white border border-slate-200 rounded-2xl p-5">
+                                <h2 class="text-sm font-bold text-[#121C2A] mb-4 flex items-center gap-2">
+                                    <i class="fa-solid fa-hashtag" style="color:#E74C3C"></i> Top Cuadrillas por No Efectividad (Cantidad)
+                                </h2>
+                                <div class="relative h-[480px]">
+                                    <canvas id="chartTopIneficienciaCant"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3 flex justify-between items-center gap-4">
+                            <input type="text" id="searchTecnico" placeholder="Buscar técnico..." onkeyup="filterTecnicosTable()" class="bg-slate-100 border border-slate-200 text-xs text-[#121C2A] rounded-lg px-3 py-1.5 w-64 focus:outline-none" style="border-color:#CBD5E1" onfocus="this.style.borderColor='#009EE0'" onblur="this.style.borderColor='#CBD5E1'">
+                            <span id="lblCountTecnicos" class="text-xs text-slate-500"></span>
+                        </div>
+                        <table class="w-full text-left text-xs text-slate-600">
+                            <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider">
+                                <tr>
+                                    <th class="py-3 px-4 rounded-l-lg">Técnico / Cuadrilla</th>
+                                    <th class="py-3 px-4">Ubicación</th>
+                                    <th class="py-3 px-4 text-center">Asignadas</th>
+                                    <th class="py-3 px-4 text-center">Efectivos</th>
+                                    <th class="py-3 px-4 text-center">No Efectivos</th>
+                                    <th class="py-3 px-4 text-center">% Efectividad</th>
+                                    <th class="py-3 px-4 text-center">% No Efectivo</th>
+                                    <th class="py-3 px-4 rounded-r-lg text-center">Prom. Diario</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbTecnicos" class="divide-y divide-slate-100 font-medium"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- TAB PRODUCTIVIDAD: PRODUCTIVIDAD POR CUADRILLA -->
+                    <div id="tabContentProductividad" class="hidden overflow-x-auto custom-scrollbar">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4" id="kpiProductividad"></div>
+                        <table class="w-full text-left text-xs text-slate-600">
+                            <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider">
+                                <tr>
+                                    <th class="py-3 px-4 rounded-l-lg">Fecha</th>
+                                    <th class="py-3 px-4 text-center">Total SOTs</th>
+                                    <th class="py-3 px-4 text-center">SOTs Efectivas</th>
+                                    <th class="py-3 px-4 text-center">Cuadrillas Activas</th>
+                                    <th class="py-3 px-4 rounded-r-lg text-center">Productividad por Cuadrilla</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbProductividad" class="divide-y divide-slate-100 font-medium"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- TAB 3: DISTRITOS -->
+                    <div id="tabContentDistritos" class="hidden overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-left text-xs text-slate-600">
+                            <thead class="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider">
+                                <tr>
+                                    <th class="py-3 px-4 rounded-l-lg">Distrito</th>
+                                    <th class="py-3 px-4">Departamento</th>
+                                    <th class="py-3 px-4">Zona</th>
+                                    <th class="py-3 px-4 text-center">SOTs Afectadas</th>
+                                    <th class="py-3 px-4 rounded-r-lg text-center">% del Total Nacional</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbDistritos" class="divide-y divide-slate-100 font-medium"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- TAB 4: DETALLE GENERAL -->
+                    <div id="tabContentDetalle" class="hidden space-y-3">
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <input type="text" id="searchDetalle" placeholder="Buscar por SOT, Técnico, Distrito..." onkeyup="filterDetalleTable()" class="bg-slate-100 border border-slate-200 text-xs text-[#121C2A] rounded-lg px-3 py-1.5 w-72 focus:outline-none focus:border-[#009EE0]">
+                            <div class="flex items-center gap-2">
+                                <select id="filterStatus" onchange="filterDetalleTable()" class="bg-slate-100 border border-slate-200 text-xs text-slate-700 rounded-lg px-2.5 py-1.5 focus:outline-none">
+                                    <option value="ALL">Todos los Status</option>
+                                </select>
+                                <span id="lblCountDetalle" class="text-xs text-slate-500"></span>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto custom-scrollbar max-h-96">
+                            <table class="w-full text-left text-xs text-slate-600">
+                                <thead class="bg-slate-50/95 text-slate-500 uppercase text-[10px] tracking-wider sticky top-0 backdrop-blur">
+                                    <tr>
+                                        <th class="py-2.5 px-3">Fecha</th>
+                                        <th class="py-2.5 px-3">SOT</th>
+                                        <th class="py-2.5 px-3">Técnico</th>
+                                        <th class="py-2.5 px-3">Distrito</th>
+                                        <th class="py-2.5 px-3">Departamento</th>
+                                        <th class="py-2.5 px-3">Servicio</th>
+                                        <th class="py-2.5 px-3">Status</th>
+                                        <th class="py-2.5 px-3">Tipo</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbDetalle" class="divide-y divide-slate-100 font-medium"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const ESTADOS_PERMITIDOS = [
+            "VISITA", "PROCESO", "ATENDIDO", "REPROGRAMADO", 
+            "1ER AUSENTE", "RECHAZO", "PENDIENTE", "CERRADO", 
+            "RETORNO MISMO DIA", "REMOTO", "NO VISITADO"
+        ];
+
+
+        // Ordena fechas "dd-mm" (o nombres de hoja que inician con ella) de forma cronológica.
+        // Evita el orden alfabético que dejaba "01-10" antes de "25-09".
+        // Si el rango cruza fin de año (ej. 28-12 → 03-01), los meses bajos se tratan como del año siguiente.
+        function ordenarFechas(lista) {
+            const parse = (v) => {
+                const m = String(v).match(/(\d{1,2})\s*[-\/.]\s*(\d{1,2})(?:\s*[-\/.]\s*(\d{2,4}))?/);
+                if (!m) return null;
+                let y = m[3] ? parseInt(m[3], 10) : null;
+                if (y !== null && y < 100) y += 2000;
+                return { d: parseInt(m[1], 10), mo: parseInt(m[2], 10), y };
+            };
+            const items = lista.map(v => ({ v, p: parse(v) }));
+            const meses = items.filter(i => i.p && i.p.y === null).map(i => i.p.mo);
+            const cruzaAnio = meses.some(m => m >= 10) && meses.some(m => m <= 3);
+            const clave = (i) => {
+                if (!i.p) return null;
+                const anio = i.p.y !== null ? i.p.y : (cruzaAnio && i.p.mo <= 3 ? 1 : 0);
+                return anio * 10000 + i.p.mo * 100 + i.p.d;
+            };
+            return items.sort((a, b) => {
+                const ka = clave(a), kb = clave(b);
+                if (ka === null && kb === null) return String(a.v).localeCompare(String(b.v));
+                if (ka === null) return 1;
+                if (kb === null) return -1;
+                return ka - kb || String(a.v).localeCompare(String(b.v));
+            }).map(i => i.v);
+        }
+
+        // Catálogo Nacional de Distritos (Lima, Norte, Centro, Sur)
+        const CATALOGO_NACIONAL_PERU = {
+            // Lima y Callao
+            "ATE": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SAN MIGUEL": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "BREÑA": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "CHACLACAYO": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SANTA ANITA": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "LURIGANCHO": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "CERCADO DE LIMA": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "PUEBLO LIBRE": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "COMAS": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "LOS OLIVOS": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SAN MARTIN DE PORRES": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SMP": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SAN JUAN DE LURIGANCHO": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SJL": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SAN JUAN DE MIRAFLORES": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SJM": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "VILLA EL SALVADOR": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "VES": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "VILLA MARIA DEL TRIUNFO": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "VMT": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SANTIAGO DE SURCO": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SURCO": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SAN BORJA": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "MIRAFLORES": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SAN ISIDRO": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "CHORRILLOS": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "INDEPENDENCIA": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "RIMAC": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "LA VICTORIA": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "LINCE": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "MAGDALENA DEL MAR": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "JESUS MARIA": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "JESÚS MARÍA": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "LURIN": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "PACHACAMAC": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "CARABAYLLO": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "PUENTE PIEDRA": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "ANCON": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "LA MOLINA": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SURQUILLO": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "BARRANCO": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "SAN LUIS": { provincia: "LIMA", departamento: "LIMA", zona: "LIMA" },
+            "CALLAO": { provincia: "CALLAO", departamento: "CALLAO", zona: "LIMA" },
+            "BELLAVISTA": { provincia: "CALLAO", departamento: "CALLAO", zona: "LIMA" },
+            "VENTANILLA": { provincia: "CALLAO", departamento: "CALLAO", zona: "LIMA" },
+            "MI PERU": { provincia: "CALLAO", departamento: "CALLAO", zona: "LIMA" },
+
+            // Provincias Norte
+            "PIURA": { provincia: "PIURA", departamento: "PIURA", zona: "NORTE" },
+            "CASTILLA": { provincia: "PIURA", departamento: "PIURA", zona: "NORTE" },
+            "26 DE OCTUBRE": { provincia: "PIURA", departamento: "PIURA", zona: "NORTE" },
+            "VEINTISEIS DE OCTUBRE": { provincia: "PIURA", departamento: "PIURA", zona: "NORTE" },
+            "TRUJILLO": { provincia: "TRUJILLO", departamento: "LA LIBERTAD", zona: "NORTE" },
+            "HUANCHACO": { provincia: "TRUJILLO", departamento: "LA LIBERTAD", zona: "NORTE" },
+            "LA ESPERANZA": { provincia: "TRUJILLO", departamento: "LA LIBERTAD", zona: "NORTE" },
+            "CAJAMARCA": { provincia: "CAJAMARCA", departamento: "CAJAMARCA", zona: "NORTE" },
+            "LOS BAÑOS DEL INCA": { provincia: "CAJAMARCA", departamento: "CAJAMARCA", zona: "NORTE" },
+            "TUMBES": { provincia: "TUMBES", departamento: "TUMBES", zona: "NORTE" },
+            "CHICLAYO": { provincia: "CHICLAYO", departamento: "LAMBAYEQUE", zona: "NORTE" },
+
+            // Centro y Sur
+            "ICA": { provincia: "ICA", departamento: "ICA", zona: "CENTRO" },
+            "SUBTANJALLA": { provincia: "ICA", departamento: "ICA", zona: "CENTRO" },
+            "LA TINGUIÑA": { provincia: "ICA", departamento: "ICA", zona: "CENTRO" },
+            "HUANCAYO": { provincia: "HUANCAYO", departamento: "JUNIN", zona: "CENTRO" },
+            "CHILCA": { provincia: "HUANCAYO", departamento: "JUNIN", zona: "CENTRO" },
+            "EL TAMBO": { provincia: "HUANCAYO", departamento: "JUNIN", zona: "CENTRO" },
+            "HUANUCO": { provincia: "HUANUCO", departamento: "HUANUCO", zona: "CENTRO" },
+            "AMARILIS": { provincia: "HUANUCO", departamento: "HUANUCO", zona: "CENTRO" },
+            "CALLERIA": { provincia: "CORONEL PORTILLO", departamento: "UCAYALI", zona: "CENTRO" },
+            "MANANTAY": { provincia: "CORONEL PORTILLO", departamento: "UCAYALI", zona: "CENTRO" },
+            "TARAPOTO": { provincia: "SAN MARTIN", departamento: "SAN MARTIN", zona: "CENTRO" },
+            "AREQUIPA": { provincia: "AREQUIPA", departamento: "AREQUIPA", zona: "SUR" },
+            "CUSCO": { provincia: "CUSCO", departamento: "CUSCO", zona: "SUR" },
+
+            // --- Ampliación de catálogo (ZONAS.xlsx / auditoría Piura-Tumbes-Centro) ---
+            "AMBO": { provincia: "AMBO", departamento: "HUANUCO", zona: "CENTRO" },
+            "BARRANCA": { provincia: "BARRANCA", departamento: "BARRANCA", zona: "CENTRO" },
+            "CACATACHI": { provincia: "SAN MARTIN", departamento: "SAN MARTIN", zona: "CENTRO" },
+            "CAJABAMBA": { provincia: "CAJABAMBA", departamento: "CAJAMARCA", zona: "NORTE" },
+            "CALETA DE CARQUIN": { provincia: "BARRANCA", departamento: "BARRANCA", zona: "CENTRO" },
+            "CALETA DE CARQUÍN": { provincia: "BARRANCA", departamento: "BARRANCA", zona: "CENTRO" },
+            "CASTILLO GRANDE": { provincia: "LEONCIO PRADO", departamento: "HUANUCO", zona: "CENTRO" },
+            "CATACAOS": { provincia: "PIURA", departamento: "PIURA", zona: "NORTE" },
+            "CELENDIN": { provincia: "CELENDIN", departamento: "CAJAMARCA", zona: "NORTE" },
+            "CHANCHAMAYO": { provincia: "CHANCHAMAYO", departamento: "JUNIN", zona: "CENTRO" },
+            "CHONTABAMBA": { provincia: "OXAPAMPA", departamento: "JUNIN", zona: "CENTRO" },
+            "CORRALES": { provincia: "TUMBES", departamento: "TUMBES", zona: "NORTE" },
+            "EL PORVENIR": { provincia: "TRUJILLO", departamento: "LA LIBERTAD", zona: "NORTE" },
+            "FLORENCIA DE MORA": { provincia: "TRUJILLO", departamento: "LA LIBERTAD", zona: "NORTE" },
+            "HUACHO": { provincia: "HUAURA", departamento: "BARRANCA", zona: "CENTRO" },
+            "HUALMAY": { provincia: "HUAURA", departamento: "BARRANCA", zona: "CENTRO" },
+            "HUAURA": { provincia: "HUAURA", departamento: "BARRANCA", zona: "CENTRO" },
+            "JAUJA": { provincia: "JAUJA", departamento: "JUNIN", zona: "CENTRO" },
+            "JOSE CRESPO Y CASTILLO": { provincia: "LEONCIO PRADO", departamento: "HUANUCO", zona: "CENTRO" },
+            "JUANJUI": { provincia: "MARISCAL CACERES", departamento: "SAN MARTIN", zona: "CENTRO" },
+            "LA BANDA DE SHILCAYO": { provincia: "SAN MARTIN", departamento: "SAN MARTIN", zona: "CENTRO" },
+            "LA UNION": { provincia: "PIURA", departamento: "PIURA", zona: "NORTE" },
+            "MARCONA": { provincia: "NAZCA", departamento: "ICA", zona: "CENTRO" },
+            "MARIANO DAMASO BERAUN": { provincia: "LEONCIO PRADO", departamento: "HUANUCO", zona: "CENTRO" },
+            "MAZAMARI": { provincia: "SATIPO", departamento: "JUNIN", zona: "CENTRO" },
+            "MORALES": { provincia: "SAN MARTIN", departamento: "SAN MARTIN", zona: "CENTRO" },
+            "MOYOBAMBA": { provincia: "MOYOBAMBA", departamento: "SAN MARTIN", zona: "CENTRO" },
+            "NAZCA": { provincia: "NAZCA", departamento: "ICA", zona: "CENTRO" },
+            "NUEVA CAJAMARCA": { provincia: "RIOJA", departamento: "SAN MARTIN", zona: "CENTRO" },
+            "OXAPAMPA": { provincia: "OXAPAMPA", departamento: "JUNIN", zona: "CENTRO" },
+            "PADRE ABAD": { provincia: "PADRE ABAD", departamento: "UCAYALI", zona: "CENTRO" },
+            "PANGOA": { provincia: "SATIPO", departamento: "JUNIN", zona: "CENTRO" },
+            "PARAMONGA": { provincia: "BARRANCA", departamento: "BARRANCA", zona: "CENTRO" },
+            "PARCONA": { provincia: "ICA", departamento: "ICA", zona: "CENTRO" },
+            "PERENE": { provincia: "CHANCHAMAYO", departamento: "JUNIN", zona: "CENTRO" },
+            "PICHANAQUI": { provincia: "CHANCHAMAYO", departamento: "JUNIN", zona: "CENTRO" },
+            "PILLCO MARCA": { provincia: "HUANUCO", departamento: "HUANUCO", zona: "CENTRO" },
+            "PUERTO BERMUDEZ": { provincia: "OXAPAMPA", departamento: "UCAYALI", zona: "CENTRO" },
+            "PUERTO INCA": { provincia: "PUERTO INCA", departamento: "UCAYALI", zona: "CENTRO" },
+            "RIOJA": { provincia: "RIOJA", departamento: "SAN MARTIN", zona: "CENTRO" },
+            "RUPA-RUPA": { provincia: "LEONCIO PRADO", departamento: "HUANUCO", zona: "CENTRO" },
+            "SALAS": { provincia: "ICA", departamento: "ICA", zona: "CENTRO" },
+            "SAN JUAN BAUTISTA": { provincia: "ICA", departamento: "ICA", zona: "CENTRO" },
+            "SAN RAMON": { provincia: "CHANCHAMAYO", departamento: "JUNIN", zona: "CENTRO" },
+            "SANTA MARIA": { provincia: "HUAURA", departamento: "BARRANCA", zona: "CENTRO" },
+            "SANTA MARÍA": { provincia: "HUAURA", departamento: "BARRANCA", zona: "CENTRO" },
+            "SATIPO": { provincia: "SATIPO", departamento: "JUNIN", zona: "CENTRO" },
+            "SAUSA": { provincia: "JAUJA", departamento: "JUNIN", zona: "CENTRO" },
+            "SECHURA": { provincia: "SECHURA", departamento: "PIURA", zona: "NORTE" },
+            "SUPE": { provincia: "BARRANCA", departamento: "BARRANCA", zona: "CENTRO" },
+            "SUPE PUERTO": { provincia: "BARRANCA", departamento: "BARRANCA", zona: "CENTRO" },
+            "TARMA": { provincia: "TARMA", departamento: "JUNIN", zona: "CENTRO" },
+            "TOCACHE": { provincia: "TOCACHE", departamento: "HUANUCO", zona: "CENTRO" },
+            "VICTOR LARCO HERRERA": { provincia: "TRUJILLO", departamento: "LA LIBERTAD", zona: "NORTE" },
+            "VILLA RICA": { provincia: "OXAPAMPA", departamento: "JUNIN", zona: "CENTRO" },
+            "VISTA ALEGRE": { provincia: "NAZCA", departamento: "ICA", zona: "CENTRO" },
+            "YARINACOCHA": { provincia: "CORONEL PORTILLO", departamento: "UCAYALI", zona: "CENTRO" },
+            "YAUYOS": { provincia: "JAUJA", departamento: "JUNIN", zona: "CENTRO" },
+            "YURIMAGUAS": { provincia: "ALTO AMAZONAS", departamento: "LORETO", zona: "CENTRO" },
+            "ZARUMILLA": { provincia: "ZARUMILLA", departamento: "TUMBES", zona: "NORTE" },
+            "ZORRITOS": { provincia: "CONTRALMIRANTE VILLAR", departamento: "TUMBES", zona: "NORTE" }
+        };
+
+        let rawConsolidatedData = [];
+        let currentFilteredData = [];
+        let hojasSeleccionadas = new Set();  // vacío = todavía no inicializado (equivale a "todas")
+        let hojasDisponibles = [];
+        let deptosSeleccionados = new Set();
+        let deptosDisponibles = [];
+        let distritosSeleccionados = new Set();
+        let distritosDisponibles = [];
+        let tecnicosSeleccionados = new Set();  // Filtro global de técnicos (vacío al inicio = todavía no inicializado, equivale a "todos")
+        let tecnicosDisponibles = [];
+        let serviciosSeleccionados = new Set();  // Filtro global de tipo de servicio (vacío al inicio = todavía no inicializado, equivale a "todos")
+        let serviciosDisponibles = [];
+        let filesProcessed = [];
+        let chartStatusObj = null;
+        let chartDeptosObj = null;
+        let chartTopIneficienciaObj = null;
+        let chartTopIneficienciaCantObj = null;
+
+        // Plugin de etiquetas numéricas sobre las barras; desactivado por defecto
+        // para no afectar los gráficos existentes (doughnut/deptos), se activa
+        // explícitamente sólo en el gráfico de Top Cuadrillas por Ineficiencia.
+        if (window.ChartDataLabels) {
+            Chart.register(ChartDataLabels);
+            Chart.defaults.set('plugins.datalabels', { display: false });
+        }
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('border-[#009EE0]', 'bg-[#EAF7FC]'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-[#009EE0]', 'bg-[#EAF7FC]'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-[#009EE0]', 'bg-[#EAF7FC]');
+            if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+        });
+
+        function handleFileSelect(e) {
+            if (e.target.files.length > 0) handleFiles(e.target.files);
+        }
+
+        function handleFiles(files) {
+            showLoading(true, "Leyendo y procesando reportes Excel...");
+            let filesArray = Array.from(files);
+            let pending = filesArray.length;
+
+            filesArray.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        processWorkbook(workbook, file.name);
+                    } catch (err) {
+                        console.error("Error al procesar archivo:", err);
+                    }
+                    pending--;
+                    if (pending === 0) {
+                        showLoading(false);
+                        renderDashboard();
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function processWorkbook(workbook, fileName) {
+            if (!filesProcessed.includes(fileName)) filesProcessed.push(fileName);
+
+            workbook.SheetNames.forEach(sheetName => {
+                if (sheetName.toUpperCase().includes('PLANTILLA') && !sheetName.toUpperCase().includes('SEGUIMIENTO')) return;
+
+                const worksheet = workbook.Sheets[sheetName];
+                const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
+                if (!rows || rows.length === 0) return;
+
+                let colIdxTecnico = -1;
+                let colIdxSOT = -1;
+                let colIdxDistrito = -1;
+                let colIdxServicio = -1;
+                let colIdxStatus = -1;
+                let colIdxObs = -1;
+
+                rows.forEach((row) => {
+                    if (!row || row.length === 0) return;
+
+                    // 1. ESCANEO DINÁMICO DE CABECERAS
+                    let esCabecera = false;
+                    row.forEach((cellVal, cIdx) => {
+                        const valStr = String(cellVal || '').toUpperCase().trim();
+                        if ((valStr.includes('TECNICO') || valStr.includes('CUADRILLA')) && 
+                            !valStr.includes('TECNICO 2') && !valStr.includes('TECNICO2') && !valStr.includes('TEC 2') && !valStr.includes('2DO TECNICO')) { 
+                            if (colIdxTecnico === -1 || valStr.includes('TECNICO 1') || valStr.includes('TECNICO1')) colIdxTecnico = cIdx; 
+                            esCabecera = true; 
+                        }
+                        if (valStr === 'SOT' || valStr.includes('N° SOT') || valStr.includes('NUMERO SOT')) { colIdxSOT = cIdx; esCabecera = true; }
+                        if (valStr === 'DISTRITO' || valStr === 'UBIGEO') { colIdxDistrito = cIdx; esCabecera = true; }
+                        if (valStr === 'SERVICIO' || valStr === 'PRODUCTO') { if (colIdxServicio === -1) colIdxServicio = cIdx; esCabecera = true; }
+                        if (valStr === 'STATUS' || valStr === 'ESTADO') { colIdxStatus = cIdx; esCabecera = true; }
+                        if (valStr === 'OBSERVACION' || valStr === 'OBSERVACIONES') { colIdxObs = cIdx; }
+                    });
+
+                    if (esCabecera) return;
+
+                    // FALLBACKS POR DEFECTO SEGÚN ZONA
+                    let cTec = colIdxTecnico >= 0 ? colIdxTecnico : 0;
+                    let cSOT = colIdxSOT >= 0 ? colIdxSOT : 5;
+                    let cDist = colIdxDistrito >= 0 ? colIdxDistrito : 8;
+                    let cServ = colIdxServicio >= 0 ? colIdxServicio : 10;
+                    let cStat = colIdxStatus >= 0 ? colIdxStatus : 16;
+                    let cObs = colIdxObs >= 0 ? colIdxObs : 17; // Col R = Sub estado
+
+                    // Búsqueda inteligente de SOT (mínimo 6 dígitos)
+                    let rawSOT = String(row[cSOT] || '').trim();
+                    if (!/\d{6,}/.test(rawSOT)) {
+                        [3, 4, 5].forEach(idx => {
+                            const testVal = String(row[idx] || '').trim();
+                            if (/\d{6,}/.test(testVal) && !/\d{6,}/.test(rawSOT)) {
+                                cSOT = idx;
+                                rawSOT = testVal;
+                            }
+                        });
+                    }
+
+                    // Búsqueda inteligente de Status
+                    let rawStatus = String(row[cStat] || '').trim();
+                    if (!rawStatus) {
+                        [13, 14, 15, 16].forEach(idx => {
+                            const testVal = String(row[idx] || '').trim().toUpperCase();
+                            const hayCoincidencia = testVal && (
+                                ESTADOS_PERMITIDOS.includes(testVal) ||
+                                ESTADOS_PERMITIDOS.some(e => testVal.includes(e))
+                            );
+                            if (hayCoincidencia) {
+                                cStat = idx;
+                                rawStatus = String(row[idx] || '').trim();
+                            }
+                        });
+                    }
+
+                    // REQUISITO MANDATORIO: Columna Status OBLIGATORIA
+                    if (!rawStatus || rawStatus.trim().length === 0) return;
+
+                    const tecUpper = String(row[cTec] || '').toUpperCase().trim();
+                    const sotUpper = rawSOT.toUpperCase().trim();
+                    const distUpper = String(row[cDist] || '').toUpperCase().trim();
+                    const statUpper = rawStatus.toUpperCase().trim();
+
+                    // Filtros Anti-Cabecera y Condición para Excluir Técnico 2 (Solo considerar Técnico 1)
+                    if (
+                        tecUpper.includes('TECNICO') || tecUpper.includes('CUADRILLA') || tecUpper.includes('SUPERVISOR') || tecUpper.startsWith('SUP.') ||
+                        sotUpper === 'SOT' || sotUpper.includes('N° SOT') || sotUpper === 'ALMUERZO' || sotUpper === 'MIGRACIONES' ||
+                        distUpper === 'DISTRITO' || distUpper === 'UBIGEO' || distUpper === 'DEPARTAMENTO' ||
+                        statUpper === 'STATUS' || statUpper === 'ESTADO' ||
+                        tecUpper.includes('TECNICO 2') || tecUpper.includes('TECNICO2') || tecUpper.includes('TEC 2') || tecUpper.includes('TEC. 2') || tecUpper.includes('TÉCNICO 2') || tecUpper.includes('2DO TECNICO') || tecUpper.includes('TECNICO 02') || tecUpper.includes('SEGUNDO TECNICO')
+                    ) return;
+
+                    // Filtro Anti-Fecha Serial Excel (ej. 46321)
+                    if (/^\d+$/.test(distUpper) || /^\d+(\.\d+)?$/.test(distUpper)) return;
+
+                    // Validación SOT contable
+                    if (!/\d{6,}/.test(rawSOT)) return;
+
+                    // Mapeo de Status
+                    // 1ra pasada: coincidencia EXACTA (evita colisiones entre estados que
+                    // se contienen entre sí, ej. "VISITA" dentro de "NO VISITADO").
+                    let estadoCoincidente = null;
+                    for (const est of ESTADOS_PERMITIDOS) {
+                        if (statUpper === est) { estadoCoincidente = est; break; }
+                    }
+                    // 2da pasada (fallback): coincidencia parcial, solo si no hubo exacta.
+                    if (!estadoCoincidente) {
+                        for (const est of ESTADOS_PERMITIDOS) {
+                            if (statUpper.includes(est) || (statUpper.length >= 3 && est.includes(statUpper))) {
+                                estadoCoincidente = est;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!estadoCoincidente) return;
+
+                    const efectivo = ["ATENDIDO", "CERRADO", "REMOTO"].includes(estadoCoincidente);
+                    const ineficiente = ["REPROGRAMADO", "1ER AUSENTE", "RECHAZO", "PENDIENTE", "RETORNO MISMO DIA", "NO VISITADO"].includes(estadoCoincidente);
+                    const tipoEfectividad = efectivo ? 'EFECTIVO' : (ineficiente ? 'NO EFECTIVO' : 'EN PROCESO');
+
+                    const distritoNorm = String(row[cDist] || '').trim() || 'NO ESPECIFICADO';
+                    const deptInfo = resolverDepartamento(distritoNorm);
+
+                    rawConsolidatedData.push({
+                        hoja: sheetName,
+                        fecha: sheetName.split(' ')[0],
+                        tecnico: String(row[cTec] || '').trim() || 'NO ASIGNADO',
+                        sot: rawSOT,
+                        distrito: distritoNorm.toUpperCase(),
+                        departamento: deptInfo.departamento,
+                        zona: deptInfo.zona,
+                        servicio: String(row[cServ] || '').trim() || 'VARIOS',
+                        status: estadoCoincidente,
+                        subestado: normalizarSubestado(row[cObs]),
+                        tipoEfectividad: tipoEfectividad
+                    });
+                });
+            });
+        }
+
+        // Sub estado (Col R "OBSERVACION"): mayúsculas, sin tildes, espacios limpios.
+        function normalizarSubestado(raw) {
+            const s = String(raw || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+            return s || 'SIN OBSERVACION';
+        }
+
+        // Normaliza la categoría de servicio (Col K) según reglas de negocio:
+        // contiene "MANTENIMIENTO" -> MANTENIMIENTO; contiene "INSTALACION" o
+        // "N PLAY" (1 PLAY/2 PLAY/3 PLAY) -> INSTALACION; contiene "MIGRACION"
+        // -> MIGRACION; cualquier otro valor -> POSTVENTA.
+        function normalizarCategoriaServicio(raw) {
+            const s = String(raw || '')
+                .toUpperCase()
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // quita tildes
+
+            if (s.includes('MANTENIMIENTO')) return 'MANTENIMIENTO';
+            if (s.includes('INSTALACION') || /\d\s*PLAY/.test(s)) return 'INSTALACION';
+            if (s.includes('MIGRACION')) return 'MIGRACION';
+            return 'POSTVENTA';
+        }
+
+        // Valores que representan "no hay distrito declarado" en la data cruda.
+        // Estos NUNCA deben pasar por el matching contra el catálogo: al hacerlo,
+        // coincidencias parciales por substring (ej. "NO ESPECIFICADO" contiene
+        // "ICA" dentro de "ESPECIFICADO") terminaban asignando por error el
+        // departamento/zona de ICA a servicios sin distrito, inflando esa zona
+        // (que en la realidad tiene un máximo de 9 cuadrillas).
+        const DISTRITOS_SIN_DATO = [
+            "", "NO ESPECIFICADO", "NO ASIGNADO", "SIN DISTRITO", "SIN DATO",
+            "SIN DATOS", "S/D", "N/A", "NA", "-", "#N/A"
+        ];
+
+        function resolverDepartamento(distritoRaw) {
+            const distNorm = String(distritoRaw || '').trim().toUpperCase();
+
+            if (DISTRITOS_SIN_DATO.includes(distNorm)) {
+                // Tiene técnico, SOT y status, pero no se declaró el distrito:
+                // se deja explícitamente pendiente de revisión, sin caer en ICA
+                // ni en ninguna otra zona real.
+                return { departamento: "POR VALIDAR", zona: "POR VALIDAR" };
+            }
+
+            if (CATALOGO_NACIONAL_PERU[distNorm]) {
+                return CATALOGO_NACIONAL_PERU[distNorm];
+            }
+
+            for (const [key, val] of Object.entries(CATALOGO_NACIONAL_PERU)) {
+                if (key.includes(distNorm) || distNorm.includes(key)) {
+                    return val;
+                }
+            }
+
+            // Distrito no mapeado en el catálogo: no se usa el nombre del distrito
+            // como si fuera un departamento; se marca explícitamente como pendiente.
+            console.warn(`[CATALOGO_NACIONAL_PERU] Distrito no mapeado: "${distNorm}" — revisar catálogo.`);
+            return { departamento: "NO MAPEADO", zona: "SIN ASIGNAR" };
+        }
+
+        function renderDashboard() {
+            if (rawConsolidatedData.length === 0) {
+                alert("No se encontraron registros contables válidos con la columna Status completada.");
+                return;
+            }
+
+            document.getElementById('dashboardContent').classList.remove('hidden');
+            document.getElementById('btnReset').classList.remove('hidden');
+            document.getElementById('btnDescargarCompleto').classList.remove('hidden');
+
+            populateFilters();
+            applyGlobalFilters();
+        }
+
+        // Recalcula KPIs, gráficos y tablas a partir de un subconjunto de datos
+        // (ya sea el consolidado completo o el resultado del combo de filtros)
+        function renderDashboardFromData(data) {
+            const total = data.length;
+            const efectivos = data.filter(d => d.tipoEfectividad === 'EFECTIVO').length;
+            const ineficientes = data.filter(d => d.tipoEfectividad === 'NO EFECTIVO').length;
+            const proceso = data.filter(d => d.tipoEfectividad === 'EN PROCESO').length;
+
+            document.getElementById('kpiTotalSots').innerText = total.toLocaleString();
+            document.getElementById('kpiFilesCount').innerText = `${filesProcessed.length} archivo(s) procesado(s)`;
+
+            document.getElementById('kpiEfectividadPct').innerText = total ? `${((efectivos / total) * 100).toFixed(1)}%` : '0%';
+            document.getElementById('kpiEfectividadCount').innerText = `(${efectivos.toLocaleString()} SOTs)`;
+
+            document.getElementById('kpiIneficienciaPct').innerText = total ? `${((ineficientes / total) * 100).toFixed(1)}%` : '0%';
+            document.getElementById('kpiIneficienciaCount').innerText = `(${ineficientes.toLocaleString()} SOTs)`;
+
+            document.getElementById('kpiProcesoPct').innerText = total ? `${((proceso / total) * 100).toFixed(1)}%` : '0%';
+            document.getElementById('kpiProcesoCount').innerText = `(${proceso.toLocaleString()} SOTs)`;
+
+            const lblCount = document.getElementById('lblFilterCount');
+            if (lblCount) lblCount.innerText = `${total.toLocaleString()} de ${rawConsolidatedData.length.toLocaleString()} registros`;
+
+            renderCharts(data, efectivos, ineficientes, proceso);
+            renderTables(data);
+        }
+
+        // Puebla las 4 listas del combo (Hoja/Fecha, Departamento, Distrito, Técnico) con los
+        // valores únicos presentes en el consolidado nacional (todas las hojas/zonas cargadas)
+        function populateFilters() {
+            const hojas = ordenarFechas([...new Set(rawConsolidatedData.map(d => d.hoja))]);
+            const deptos = [...new Set(rawConsolidatedData.map(d => d.departamento))].sort();
+            const distritos = [...new Set(rawConsolidatedData.map(d => d.distrito))].sort();
+            const tecnicos = [...new Set(rawConsolidatedData.map(d => d.tecnico))].sort();
+
+            // Hoja/Fecha: checkboxes múltiples. Las opciones ya conocidas conservan su
+            // estado de selección; las opciones nuevas (recién cargadas) se marcan
+            // automáticamente para que aparezcan sin pasos extra.
+            const eraInicialHoja = hojasDisponibles.length === 0;
+            hojas.forEach(h => { if (!hojasDisponibles.includes(h)) hojasSeleccionadas.add(h); });
+            [...hojasSeleccionadas].forEach(h => { if (!hojas.includes(h)) hojasSeleccionadas.delete(h); });
+            if (eraInicialHoja) hojasSeleccionadas = new Set(hojas);
+            hojasDisponibles = hojas;
+
+            document.getElementById('listaHojas').innerHTML = hojas.map(h => `
+                <label class="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-100 rounded cursor-pointer">
+                    <input type="checkbox" value="${h}" onchange="onHojaCheckboxChange()" ${hojasSeleccionadas.has(h) ? 'checked' : ''} class="accent-[#009EE0]">
+                    ${h}
+                </label>
+            `).join('');
+            actualizarLabelHoja();
+
+            // Departamento: mismo patrón de checkboxes múltiples
+            const eraInicialDepto = deptosDisponibles.length === 0;
+            deptos.forEach(d => { if (!deptosDisponibles.includes(d)) deptosSeleccionados.add(d); });
+            [...deptosSeleccionados].forEach(d => { if (!deptos.includes(d)) deptosSeleccionados.delete(d); });
+            if (eraInicialDepto) deptosSeleccionados = new Set(deptos);
+            deptosDisponibles = deptos;
+
+            document.getElementById('listaDeptos').innerHTML = deptos.map(d => `
+                <label class="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-100 rounded cursor-pointer">
+                    <input type="checkbox" value="${d}" onchange="onDeptoCheckboxChange()" ${deptosSeleccionados.has(d) ? 'checked' : ''} class="accent-[#009EE0]">
+                    ${d}
+                </label>
+            `).join('');
+            actualizarLabelDepto();
+
+            // Distrito: mismo patrón de checkboxes múltiples
+            const eraInicialDist = distritosDisponibles.length === 0;
+            distritos.forEach(d => { if (!distritosDisponibles.includes(d)) distritosSeleccionados.add(d); });
+            [...distritosSeleccionados].forEach(d => { if (!distritos.includes(d)) distritosSeleccionados.delete(d); });
+            if (eraInicialDist) distritosSeleccionados = new Set(distritos);
+            distritosDisponibles = distritos;
+
+            document.getElementById('listaDistritos').innerHTML = distritos.map(d => `
+                <label class="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-100 rounded cursor-pointer">
+                    <input type="checkbox" value="${d}" onchange="onDistritoCheckboxChange()" ${distritosSeleccionados.has(d) ? 'checked' : ''} class="accent-[#009EE0]">
+                    ${d}
+                </label>
+            `).join('');
+            actualizarLabelDistrito();
+
+            // Técnico / Cuadrilla: mismo patrón de checkboxes múltiples
+            const eraInicialTec = tecnicosDisponibles.length === 0;
+            tecnicos.forEach(t => { if (!tecnicosDisponibles.includes(t)) tecnicosSeleccionados.add(t); });
+            [...tecnicosSeleccionados].forEach(t => { if (!tecnicos.includes(t)) tecnicosSeleccionados.delete(t); });
+            if (eraInicialTec) tecnicosSeleccionados = new Set(tecnicos);
+            tecnicosDisponibles = tecnicos;
+
+            document.getElementById('listaTecnicos').innerHTML = tecnicos.map(t => `
+                <label class="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-100 rounded cursor-pointer">
+                    <input type="checkbox" value="${t}" onchange="onTecnicoCheckboxChange()" ${tecnicosSeleccionados.has(t) ? 'checked' : ''} class="accent-[#009EE0]">
+                    ${t}
+                </label>
+            `).join('');
+            actualizarLabelTecnico();
+
+            // Tipo de Servicio: mismo patrón de checkboxes múltiples, usando la
+            // categoría normalizada (INSTALACION / MANTENIMIENTO / MIGRACION / POSTVENTA)
+            const servicios = [...new Set(rawConsolidatedData.map(d => normalizarCategoriaServicio(d.servicio)))].sort();
+            const eraInicialServ = serviciosDisponibles.length === 0;
+            servicios.forEach(s => { if (!serviciosDisponibles.includes(s)) serviciosSeleccionados.add(s); });
+            [...serviciosSeleccionados].forEach(s => { if (!servicios.includes(s)) serviciosSeleccionados.delete(s); });
+            if (eraInicialServ) serviciosSeleccionados = new Set(servicios);
+            serviciosDisponibles = servicios;
+
+            document.getElementById('listaServicios').innerHTML = servicios.map(s => `
+                <label class="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-100 rounded cursor-pointer">
+                    <input type="checkbox" value="${s}" onchange="onServicioCheckboxChange()" ${serviciosSeleccionados.has(s) ? 'checked' : ''} class="accent-[#009EE0]">
+                    ${s}
+                </label>
+            `).join('');
+            actualizarLabelServicio();
+        }
+
+        function actualizarLabelHoja() {
+            const lbl = document.getElementById('lblFilterHoja');
+            if (hojasSeleccionadas.size === 0) {
+                lbl.innerText = 'NINGUNA HOJA SELECCIONADA';
+            } else if (hojasSeleccionadas.size === hojasDisponibles.length) {
+                lbl.innerText = 'TODAS LAS HOJAS / FECHAS';
+            } else if (hojasSeleccionadas.size === 1) {
+                lbl.innerText = [...hojasSeleccionadas][0];
+            } else {
+                lbl.innerText = `${hojasSeleccionadas.size} fechas seleccionadas`;
+            }
+        }
+
+        function actualizarLabelDepto() {
+            const lbl = document.getElementById('lblFilterDepartamento');
+            if (deptosSeleccionados.size === 0) {
+                lbl.innerText = 'NINGÚN DEPARTAMENTO SELECCIONADO';
+            } else if (deptosSeleccionados.size === deptosDisponibles.length) {
+                lbl.innerText = 'TODOS LOS DEPARTAMENTOS';
+            } else if (deptosSeleccionados.size === 1) {
+                lbl.innerText = [...deptosSeleccionados][0];
+            } else {
+                lbl.innerText = `${deptosSeleccionados.size} departamentos seleccionados`;
+            }
+        }
+
+        function actualizarLabelDistrito() {
+            const lbl = document.getElementById('lblFilterDistrito');
+            if (distritosSeleccionados.size === 0) {
+                lbl.innerText = 'NINGÚN DISTRITO SELECCIONADO';
+            } else if (distritosSeleccionados.size === distritosDisponibles.length) {
+                lbl.innerText = 'TODOS LOS DISTRITOS';
+            } else if (distritosSeleccionados.size === 1) {
+                lbl.innerText = [...distritosSeleccionados][0];
+            } else {
+                lbl.innerText = `${distritosSeleccionados.size} distritos seleccionados`;
+            }
+        }
+
+        function onHojaCheckboxChange() {
+            const checks = document.querySelectorAll('#listaHojas input[type="checkbox"]');
+            hojasSeleccionadas = new Set([...checks].filter(c => c.checked).map(c => c.value));
+            actualizarLabelHoja();
+            applyGlobalFilters();
+        }
+
+        function seleccionarTodasHojas() {
+            hojasSeleccionadas = new Set(hojasDisponibles);
+            document.querySelectorAll('#listaHojas input[type="checkbox"]').forEach(c => c.checked = true);
+            actualizarLabelHoja();
+            applyGlobalFilters();
+        }
+
+        function limpiarHojas() {
+            hojasSeleccionadas = new Set();
+            document.querySelectorAll('#listaHojas input[type="checkbox"]').forEach(c => c.checked = false);
+            actualizarLabelHoja();
+            applyGlobalFilters();
+        }
+
+        function toggleHojaDropdown() {
+            document.getElementById('panelFilterHoja').classList.toggle('hidden');
+        }
+
+        function onDeptoCheckboxChange() {
+            const checks = document.querySelectorAll('#listaDeptos input[type="checkbox"]');
+            deptosSeleccionados = new Set([...checks].filter(c => c.checked).map(c => c.value));
+            actualizarLabelDepto();
+            applyGlobalFilters();
+        }
+
+        function seleccionarTodosDeptos() {
+            deptosSeleccionados = new Set(deptosDisponibles);
+            document.querySelectorAll('#listaDeptos input[type="checkbox"]').forEach(c => c.checked = true);
+            actualizarLabelDepto();
+            applyGlobalFilters();
+        }
+
+        function limpiarDeptos() {
+            deptosSeleccionados = new Set();
+            document.querySelectorAll('#listaDeptos input[type="checkbox"]').forEach(c => c.checked = false);
+            actualizarLabelDepto();
+            applyGlobalFilters();
+        }
+
+        function toggleDeptoDropdown() {
+            document.getElementById('panelFilterDepartamento').classList.toggle('hidden');
+        }
+
+        function onDistritoCheckboxChange() {
+            const checks = document.querySelectorAll('#listaDistritos input[type="checkbox"]');
+            distritosSeleccionados = new Set([...checks].filter(c => c.checked).map(c => c.value));
+            actualizarLabelDistrito();
+            applyGlobalFilters();
+        }
+
+        function seleccionarTodosDistritos() {
+            distritosSeleccionados = new Set(distritosDisponibles);
+            document.querySelectorAll('#listaDistritos input[type="checkbox"]').forEach(c => c.checked = true);
+            actualizarLabelDistrito();
+            applyGlobalFilters();
+        }
+
+        function limpiarDistritos() {
+            distritosSeleccionados = new Set();
+            document.querySelectorAll('#listaDistritos input[type="checkbox"]').forEach(c => c.checked = false);
+            actualizarLabelDistrito();
+            applyGlobalFilters();
+        }
+
+        function toggleDistritoDropdown() {
+            document.getElementById('panelFilterDistrito').classList.toggle('hidden');
+        }
+
+        function actualizarLabelTecnico() {
+            const lbl = document.getElementById('lblFilterTecnico');
+            if (tecnicosSeleccionados.size === 0) {
+                lbl.innerText = 'NINGÚN TÉCNICO SELECCIONADO';
+            } else if (tecnicosSeleccionados.size === tecnicosDisponibles.length) {
+                lbl.innerText = 'TODOS LOS TÉCNICOS';
+            } else if (tecnicosSeleccionados.size === 1) {
+                lbl.innerText = [...tecnicosSeleccionados][0];
+            } else {
+                lbl.innerText = `${tecnicosSeleccionados.size} técnicos seleccionados`;
+            }
+        }
+
+        function onTecnicoCheckboxChange() {
+            const checks = document.querySelectorAll('#listaTecnicos input[type="checkbox"]');
+            tecnicosSeleccionados = new Set([...checks].filter(c => c.checked).map(c => c.value));
+            actualizarLabelTecnico();
+            applyGlobalFilters();
+        }
+
+        function seleccionarTodosTecnicos() {
+            tecnicosSeleccionados = new Set(tecnicosDisponibles);
+            document.querySelectorAll('#listaTecnicos input[type="checkbox"]').forEach(c => c.checked = true);
+            actualizarLabelTecnico();
+            applyGlobalFilters();
+        }
+
+        function limpiarTecnicos() {
+            tecnicosSeleccionados = new Set();
+            document.querySelectorAll('#listaTecnicos input[type="checkbox"]').forEach(c => c.checked = false);
+            actualizarLabelTecnico();
+            applyGlobalFilters();
+        }
+
+        function toggleTecnicoDropdown() {
+            document.getElementById('panelFilterTecnico').classList.toggle('hidden');
+        }
+
+        function actualizarLabelServicio() {
+            const lbl = document.getElementById('lblFilterServicio');
+            if (serviciosSeleccionados.size === 0) {
+                lbl.innerText = 'NINGÚN SERVICIO SELECCIONADO';
+            } else if (serviciosSeleccionados.size === serviciosDisponibles.length) {
+                lbl.innerText = 'TODOS LOS SERVICIOS';
+            } else if (serviciosSeleccionados.size === 1) {
+                lbl.innerText = [...serviciosSeleccionados][0];
+            } else {
+                lbl.innerText = `${serviciosSeleccionados.size} servicios seleccionados`;
+            }
+        }
+
+        function onServicioCheckboxChange() {
+            const checks = document.querySelectorAll('#listaServicios input[type="checkbox"]');
+            serviciosSeleccionados = new Set([...checks].filter(c => c.checked).map(c => c.value));
+            actualizarLabelServicio();
+            applyGlobalFilters();
+        }
+
+        function seleccionarTodosServicios() {
+            serviciosSeleccionados = new Set(serviciosDisponibles);
+            document.querySelectorAll('#listaServicios input[type="checkbox"]').forEach(c => c.checked = true);
+            actualizarLabelServicio();
+            applyGlobalFilters();
+        }
+
+        function limpiarServicios() {
+            serviciosSeleccionados = new Set();
+            document.querySelectorAll('#listaServicios input[type="checkbox"]').forEach(c => c.checked = false);
+            actualizarLabelServicio();
+            applyGlobalFilters();
+        }
+
+        function toggleServicioDropdown() {
+            document.getElementById('panelFilterServicio').classList.toggle('hidden');
+        }
+
+        // Cierra cualquier dropdown de filtros (Hoja/Departamento/Distrito/Técnico/Servicio) al hacer clic fuera de él
+        document.addEventListener('click', (e) => {
+            [
+                ['panelFilterHoja', 'btnFilterHoja'],
+                ['panelFilterDepartamento', 'btnFilterDepartamento'],
+                ['panelFilterDistrito', 'btnFilterDistrito'],
+                ['panelFilterTecnico', 'btnFilterTecnico'],
+                ['panelFilterServicio', 'btnFilterServicio']
+            ].forEach(([panelId, btnId]) => {
+                const panel = document.getElementById(panelId);
+                const btn = document.getElementById(btnId);
+                if (panel && !panel.classList.contains('hidden') && !panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+                    panel.classList.add('hidden');
+                }
+            });
+        });
+
+        // Se dispara al cambiar cualquiera de los combos del filtro global
+        function applyGlobalFilters() {
+
+            currentFilteredData = rawConsolidatedData.filter(d =>
+                hojasSeleccionadas.has(d.hoja) &&
+                deptosSeleccionados.has(d.departamento) &&
+                distritosSeleccionados.has(d.distrito) &&
+                tecnicosSeleccionados.has(d.tecnico) &&
+                serviciosSeleccionados.has(normalizarCategoriaServicio(d.servicio))
+            );
+
+            renderDashboardFromData(currentFilteredData);
+        }
+
+        function clearGlobalFilters() {
+            seleccionarTodasHojas();
+            seleccionarTodosDeptos();
+            seleccionarTodosDistritos();
+            seleccionarTodosTecnicos();
+            seleccionarTodosServicios();
+            applyGlobalFilters();
+        }
+
+        function renderCharts(data, efectivos, ineficientes, proceso) {
+            const ctxStatus = document.getElementById('chartStatus').getContext('2d');
+            if (chartStatusObj) chartStatusObj.destroy();
+            chartStatusObj = new Chart(ctxStatus, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Efectivos (Atendidos)', 'No Efectivos', 'En Proceso'],
+                    datasets: [{
+                        data: [efectivos, ineficientes, proceso],
+                        backgroundColor: ['#2DCC71', '#E74C3C', '#E67E22'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { color: '#64748B', font: { size: 11 } } } }
+                }
+            });
+
+            // Agrupar por fecha (hoja) y departamento — permite comparar el
+            // desempeño día a día cuando hay varios días cargados, y por
+            // departamento cuando hay varios departamentos (respeta los
+            // filtros de Hoja/Fecha y Departamento del panel superior).
+            const fechaDeptoMap = {};
+            const deptosSet = new Set();
+            const fechasOrdenadas = [];
+            data.forEach(d => {
+                if (!fechasOrdenadas.includes(d.fecha)) fechasOrdenadas.push(d.fecha);
+                if (!fechaDeptoMap[d.fecha]) fechaDeptoMap[d.fecha] = {};
+                if (!fechaDeptoMap[d.fecha][d.departamento]) fechaDeptoMap[d.fecha][d.departamento] = { total: 0, efectivos: 0 };
+                fechaDeptoMap[d.fecha][d.departamento].total++;
+                if (d.tipoEfectividad === 'EFECTIVO') fechaDeptoMap[d.fecha][d.departamento].efectivos++;
+                deptosSet.add(d.departamento);
+            });
+            fechasOrdenadas.splice(0, fechasOrdenadas.length, ...ordenarFechas(fechasOrdenadas));
+
+            const deptLabels = [...deptosSet].sort();
+            const paletaDeptos = ['#009EE0', '#2DCC71', '#E67E22', '#E74C3C', '#FFB800', '#5FBFE0', '#0C3B5C', '#FFCD4D', '#7FE0A8', '#A1E2F5'];
+            const deptData = deptLabels.map((dep, i) => ({
+                label: dep,
+                data: fechasOrdenadas.map(f => {
+                    const st = fechaDeptoMap[f][dep];
+                    return st ? ((st.efectivos / st.total) * 100).toFixed(1) : null;
+                }),
+                backgroundColor: paletaDeptos[i % paletaDeptos.length],
+                borderRadius: 4
+            }));
+
+            const ctxDeptos = document.getElementById('chartDeptos').getContext('2d');
+            if (chartDeptosObj) chartDeptosObj.destroy();
+            chartDeptosObj = new Chart(ctxDeptos, {
+                type: 'bar',
+                data: {
+                    labels: fechasOrdenadas,
+                    datasets: deptData
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { max: 100, ticks: { color: '#64748B', callback: v => v + '%' }, grid: { color: '#E2E8F0' } },
+                        x: { ticks: { color: '#64748B' }, grid: { display: false } }
+                    },
+                    plugins: {
+                        legend: { display: deptLabels.length > 1, position: 'bottom', labels: { color: '#64748B', font: { size: 10 } } },
+                        datalabels: {
+                            display: true,
+                            anchor: 'end',
+                            align: 'top',
+                            color: '#121C2A',
+                            font: { size: 10, weight: 'bold' },
+                            formatter: v => (v === null || v === undefined) ? '' : v + '%'
+                        }
+                    }
+                }
+            });
+        }
+
+        // Top 10 cuadrillas con mayor % de ineficiencia (mínimo 3 SOTs asignadas
+        // para evitar que un técnico con 1 sola SOT fallida distorsione el ranking)
+        function renderChartTopIneficiencia(tecnicos) {
+            const top = tecnicos
+                .filter(t => t.total >= 3)
+                .sort((a, b) => b.pctInef - a.pctInef)
+                .slice(0, 10);
+
+            const ctxTop = document.getElementById('chartTopIneficiencia').getContext('2d');
+            if (chartTopIneficienciaObj) chartTopIneficienciaObj.destroy();
+            chartTopIneficienciaObj = new Chart(ctxTop, {
+                type: 'bar',
+                data: {
+                    labels: top.map(t => t.tecnico),
+                    datasets: [
+                        {
+                            label: '% No Efectivo',
+                            data: top.map(t => t.pctInef),
+                            backgroundColor: '#E74C3C',
+                            borderRadius: 4,
+                            barPercentage: 0.75,
+                            categoryPercentage: 0.8
+                        },
+                        {
+                            label: '% Efectividad',
+                            data: top.map(t => t.pctEf),
+                            backgroundColor: '#2DCC71',
+                            borderRadius: 4,
+                            barPercentage: 0.75,
+                            categoryPercentage: 0.8
+                        }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { max: 100, ticks: { color: '#64748B', callback: v => v + '%' }, grid: { color: '#E2E8F0' } },
+                        y: { ticks: { color: '#64748B', font: { size: 11, weight: 'bold' } }, grid: { display: false } }
+                    },
+                    plugins: {
+                        legend: { position: 'top', labels: { color: '#64748B', font: { size: 11 } } },
+                        datalabels: {
+                            display: true,
+                            anchor: 'end',
+                            align: 'right',
+                            color: '#121C2A',
+                            font: { size: 10, weight: 'bold' },
+                            formatter: v => v + '%'
+                        }
+                    }
+                }
+            });
+        }
+
+        // Misma clasificación que el gráfico anterior, pero en valores absolutos
+        // (cantidad de SOTs) en lugar de porcentaje.
+        function renderChartTopIneficienciaCantidad(tecnicos) {
+            const top = tecnicos
+                .filter(t => t.total >= 3)
+                .sort((a, b) => b.inef - a.inef)
+                .slice(0, 10);
+
+            const ctxTop = document.getElementById('chartTopIneficienciaCant').getContext('2d');
+            if (chartTopIneficienciaCantObj) chartTopIneficienciaCantObj.destroy();
+            chartTopIneficienciaCantObj = new Chart(ctxTop, {
+                type: 'bar',
+                data: {
+                    labels: top.map(t => t.tecnico),
+                    datasets: [
+                        {
+                            label: 'No Efectivos',
+                            data: top.map(t => t.inef),
+                            backgroundColor: '#E74C3C',
+                            borderRadius: 4,
+                            barPercentage: 0.75,
+                            categoryPercentage: 0.8
+                        },
+                        {
+                            label: 'Efectivos',
+                            data: top.map(t => t.ef),
+                            backgroundColor: '#2DCC71',
+                            borderRadius: 4,
+                            barPercentage: 0.75,
+                            categoryPercentage: 0.8
+                        }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { beginAtZero: true, ticks: { color: '#64748B', precision: 0 }, grid: { color: '#E2E8F0' } },
+                        y: { ticks: { color: '#64748B', font: { size: 11, weight: 'bold' } }, grid: { display: false } }
+                    },
+                    plugins: {
+                        legend: { position: 'top', labels: { color: '#64748B', font: { size: 11 } } },
+                        datalabels: {
+                            display: true,
+                            anchor: 'end',
+                            align: 'right',
+                            color: '#121C2A',
+                            font: { size: 10, weight: 'bold' },
+                            formatter: v => v
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderTables(data) {
+            // 1. Departamentos
+            const deptosMap = {};
+            data.forEach(d => {
+                if (!deptosMap[d.departamento]) deptosMap[d.departamento] = { total: 0, ef: 0, inef: 0, zona: d.zona };
+                deptosMap[d.departamento].total++;
+                if (d.tipoEfectividad === 'EFECTIVO') deptosMap[d.departamento].ef++;
+                if (d.tipoEfectividad === 'NO EFECTIVO') deptosMap[d.departamento].inef++;
+            });
+
+            const tbDeptos = document.getElementById('tbDeptos');
+            tbDeptos.innerHTML = Object.entries(deptosMap).sort((a,b) => b[1].total - a[1].total).map(([dep, st]) => `
+                <tr class="hover:bg-slate-50">
+                    <td class="py-2.5 px-4 font-bold text-[#121C2A]">${dep}</td>
+                    <td class="py-2.5 px-4"><span class="px-2 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 border border-slate-200">${st.zona}</span></td>
+                    <td class="py-2.5 px-4 text-center">${st.total}</td>
+                    <td class="py-2.5 px-4 text-center text-[#2DCC71]">${st.ef}</td>
+                    <td class="py-2.5 px-4 text-center text-[#E74C3C]">${st.inef}</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#2DCC71]">${((st.ef/st.total)*100).toFixed(1)}%</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#E74C3C]">${((st.inef/st.total)*100).toFixed(1)}%</td>
+                </tr>
+            `).join('');
+
+            // 1b. Distribución por Status
+            const statusMap = {};
+            data.forEach(d => {
+                if (!statusMap[d.status]) statusMap[d.status] = { total: 0, clasificacion: d.tipoEfectividad };
+                statusMap[d.status].total++;
+            });
+
+            const totalStatus = data.length;
+            const claseColor = { 'EFECTIVO': 'text-[#2DCC71]', 'NO EFECTIVO': 'text-[#E74C3C]', 'EN PROCESO': 'text-[#E67E22]' };
+            document.getElementById('tbStatus').innerHTML = Object.entries(statusMap).sort((a,b) => b[1].total - a[1].total).map(([st, info]) => `
+                <tr class="hover:bg-slate-50">
+                    <td class="py-2.5 px-4 font-bold text-[#121C2A]">${st}</td>
+                    <td class="py-2.5 px-4 font-bold ${claseColor[info.clasificacion] || 'text-slate-600'}">${info.clasificacion}</td>
+                    <td class="py-2.5 px-4 text-center">${info.total}</td>
+                    <td class="py-2.5 px-4 text-center">${((info.total/totalStatus)*100).toFixed(1)}%</td>
+                </tr>
+            `).join('');
+
+            renderMotivos();
+
+            // 1c. Categoría de Servicios (Col K)
+            const servMap = {};
+            data.forEach(d => {
+                const cat = normalizarCategoriaServicio(d.servicio);
+                if (!servMap[cat]) servMap[cat] = { total: 0, ef: 0, inef: 0 };
+                servMap[cat].total++;
+                if (d.tipoEfectividad === 'EFECTIVO') servMap[cat].ef++;
+                if (d.tipoEfectividad === 'NO EFECTIVO') servMap[cat].inef++;
+            });
+
+            document.getElementById('tbServicios').innerHTML = Object.entries(servMap).sort((a,b) => b[1].total - a[1].total).map(([cat, st]) => `
+                <tr class="hover:bg-slate-50">
+                    <td class="py-2.5 px-4 font-bold text-[#121C2A]">${cat}</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#121C2A]">${st.total}</td>
+                    <td class="py-2.5 px-4 text-center text-[#2DCC71]">${st.ef}</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#2DCC71]">${((st.ef/st.total)*100).toFixed(1)}%</td>
+                    <td class="py-2.5 px-4 text-center text-[#E74C3C]">${st.inef}</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#E74C3C]">${((st.inef/st.total)*100).toFixed(1)}%</td>
+                </tr>
+            `).join('');
+
+            // 2. Técnicos
+            const tecMap = {};
+            data.forEach(d => {
+                if (!tecMap[d.tecnico]) tecMap[d.tecnico] = { total: 0, ef: 0, inef: 0, depto: d.departamento, fechas: new Set() };
+                tecMap[d.tecnico].total++;
+                tecMap[d.tecnico].fechas.add(d.fecha);
+                if (d.tipoEfectividad === 'EFECTIVO') tecMap[d.tecnico].ef++;
+                if (d.tipoEfectividad === 'NO EFECTIVO') tecMap[d.tecnico].inef++;
+            });
+
+            window.globalTecnicos = Object.entries(tecMap).map(([tec, st]) => ({
+                tecnico: tec,
+                depto: st.depto,
+                total: st.total,
+                ef: st.ef,
+                inef: st.inef,
+                pctEf: ((st.ef/st.total)*100).toFixed(1),
+                pctInef: ((st.inef/st.total)*100).toFixed(1),
+                promDiario: (st.ef / Math.max(1, st.fechas.size)).toFixed(1)
+            })).sort((a,b) => parseFloat(a.promDiario) - parseFloat(b.promDiario));
+
+            renderTecnicosTable(window.globalTecnicos);
+            renderChartTopIneficiencia(window.globalTecnicos);
+            renderChartTopIneficienciaCantidad(window.globalTecnicos);
+
+            // 2b. Producción por Servicios (Técnico x Categoría)
+            const tecServMap = {};
+            data.forEach(d => {
+                if (!tecServMap[d.tecnico]) {
+                    tecServMap[d.tecnico] = {
+                        depto: d.departamento, total: 0, ef: 0, inef: 0,
+                        cats: { INSTALACION: 0, MANTENIMIENTO: 0, MIGRACION: 0, POSTVENTA: 0 },
+                        fechas: new Set()
+                    };
+                }
+                const st = tecServMap[d.tecnico];
+                const cat = normalizarCategoriaServicio(d.servicio);
+                st.cats[cat]++;
+                st.total++;
+                st.fechas.add(d.fecha);
+                if (d.tipoEfectividad === 'EFECTIVO') st.ef++;
+                if (d.tipoEfectividad === 'NO EFECTIVO') st.inef++;
+            });
+
+            window.globalTecServicios = Object.entries(tecServMap).map(([tec, st]) => ({
+                tecnico: tec,
+                depto: st.depto,
+                instalacion: st.cats.INSTALACION,
+                mantenimiento: st.cats.MANTENIMIENTO,
+                migracion: st.cats.MIGRACION,
+                postventa: st.cats.POSTVENTA,
+                total: st.total,
+                ef: st.ef,
+                inef: st.inef,
+                promDiario: (st.total / Math.max(1, st.fechas.size)).toFixed(1)
+            })).sort((a,b) => a.total - b.total);
+
+            renderTecServiciosTable(window.globalTecServicios);
+
+            // 2c. Productividad por Cuadrilla (por día y período)
+            renderProductividadTable(data);
+
+            // 3. Distritos
+            const distMap = {};
+            data.forEach(d => {
+                if (!distMap[d.distrito]) distMap[d.distrito] = { total: 0, depto: d.departamento, zona: d.zona };
+                distMap[d.distrito].total++;
+            });
+
+            const totalSots = data.length;
+            document.getElementById('tbDistritos').innerHTML = Object.entries(distMap).sort((a,b) => b[1].total - a[1].total).map(([dist, st]) => `
+                <tr class="hover:bg-slate-50">
+                    <td class="py-2.5 px-4 font-bold text-[#121C2A]">${dist}</td>
+                    <td class="py-2.5 px-4">${st.depto}</td>
+                    <td class="py-2.5 px-4"><span class="px-2 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 border border-slate-200">${st.zona}</span></td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#009EE0]">${st.total}</td>
+                    <td class="py-2.5 px-4 text-center">${((st.total/totalSots)*100).toFixed(2)}%</td>
+                </tr>
+            `).join('');
+
+            // 4. Detalle
+            renderDetalleTable(data);
+
+            // Select status filter
+            const filterSelect = document.getElementById('filterStatus');
+            filterSelect.innerHTML = `<option value="ALL">Todos los Status (${ESTADOS_PERMITIDOS.length})</option>` + 
+                ESTADOS_PERMITIDOS.map(s => `<option value="${s}">${s}</option>`).join('');
+        }
+
+        function renderTecnicosTable(data) {
+            document.getElementById('lblCountTecnicos').innerText = `${data.length} técnico(s)`;
+            document.getElementById('tbTecnicos').innerHTML = data.map(st => `
+                <tr class="hover:bg-slate-50">
+                    <td class="py-2.5 px-4 font-bold text-[#121C2A]">${st.tecnico}</td>
+                    <td class="py-2.5 px-4 text-slate-500">${st.depto}</td>
+                    <td class="py-2.5 px-4 text-center font-bold">${st.total}</td>
+                    <td class="py-2.5 px-4 text-center text-[#2DCC71]">${st.ef}</td>
+                    <td class="py-2.5 px-4 text-center text-[#E74C3C]">${st.inef}</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#2DCC71]">${st.pctEf}%</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#E74C3C]">${st.pctInef}%</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#009EE0]">${st.promDiario}</td>
+                </tr>
+            `).join('');
+        }
+
+        // Exporta TODO el reporte (respetando los filtros globales activos) a un único
+        // Excel con una hoja por cada pestaña del dashboard.
+        function exportarReporteCompleto() {
+            if (!currentFilteredData || currentFilteredData.length === 0) {
+                alert('No hay datos cargados para exportar. Carga un archivo primero.');
+                return;
+            }
+
+            const data = currentFilteredData;
+            const total = data.length;
+            const libro = XLSX.utils.book_new();
+            const anchoAuto = (filas) => {
+                if (!filas.length) return [];
+                return Object.keys(filas[0]).map(k => ({
+                    wch: Math.max(k.length, ...filas.map(f => String(f[k] ?? '').length)) + 2
+                }));
+            };
+            const agregarHoja = (filas, nombre) => {
+                const hoja = XLSX.utils.json_to_sheet(filas);
+                hoja['!cols'] = anchoAuto(filas);
+                XLSX.utils.book_append_sheet(libro, hoja, nombre.slice(0, 31));
+            };
+
+            // 0. Resumen General
+            const efectivos = data.filter(d => d.tipoEfectividad === 'EFECTIVO').length;
+            const inefectivos = data.filter(d => d.tipoEfectividad === 'NO EFECTIVO').length;
+            const proceso = data.filter(d => d.tipoEfectividad === 'EN PROCESO').length;
+            agregarHoja([{
+                'Total SOTs Validadas': total,
+                'Efectivos': efectivos,
+                '% Efectividad': total ? `${((efectivos / total) * 100).toFixed(1)}%` : '0%',
+                'No Efectivos': inefectivos,
+                '% No Efectivo': total ? `${((inefectivos / total) * 100).toFixed(1)}%` : '0%',
+                'En Proceso': proceso,
+                '% En Proceso': total ? `${((proceso / total) * 100).toFixed(1)}%` : '0%'
+            }], 'Resumen General');
+
+            // 1. Departamentos
+            const deptosMap = {};
+            data.forEach(d => {
+                if (!deptosMap[d.departamento]) deptosMap[d.departamento] = { total: 0, ef: 0, inef: 0, zona: d.zona };
+                deptosMap[d.departamento].total++;
+                if (d.tipoEfectividad === 'EFECTIVO') deptosMap[d.departamento].ef++;
+                if (d.tipoEfectividad === 'NO EFECTIVO') deptosMap[d.departamento].inef++;
+            });
+            agregarHoja(Object.entries(deptosMap).sort((a, b) => b[1].total - a[1].total).map(([dep, st]) => ({
+                'Departamento': dep,
+                'Zona': st.zona,
+                'Total SOTs': st.total,
+                'Atendidos': st.ef,
+                'No Efectivos': st.inef,
+                '% Efectividad': `${((st.ef / st.total) * 100).toFixed(1)}%`,
+                '% No Efectivo': `${((st.inef / st.total) * 100).toFixed(1)}%`
+            })), 'Departamentos');
+
+            // 2. Status
+            const statusMap = {};
+            data.forEach(d => {
+                if (!statusMap[d.status]) statusMap[d.status] = { total: 0, clasificacion: d.tipoEfectividad };
+                statusMap[d.status].total++;
+            });
+            agregarHoja(Object.entries(statusMap).sort((a, b) => b[1].total - a[1].total).map(([st, info]) => ({
+                'Status Normalizado': st,
+                'Clasificación': info.clasificacion,
+                'Cantidad': info.total,
+                '% del Total': `${((info.total / total) * 100).toFixed(1)}%`
+            })), 'Status');
+
+            // 3. Servicios (categoría)
+            const servMap = {};
+            data.forEach(d => {
+                const cat = normalizarCategoriaServicio(d.servicio);
+                if (!servMap[cat]) servMap[cat] = { total: 0, ef: 0, inef: 0 };
+                servMap[cat].total++;
+                if (d.tipoEfectividad === 'EFECTIVO') servMap[cat].ef++;
+                if (d.tipoEfectividad === 'NO EFECTIVO') servMap[cat].inef++;
+            });
+            agregarHoja(Object.entries(servMap).sort((a, b) => b[1].total - a[1].total).map(([cat, st]) => ({
+                'Categoría': cat,
+                'Total SOTs': st.total,
+                'Efectivas': st.ef,
+                '% Efectividad': `${((st.ef / st.total) * 100).toFixed(1)}%`,
+                'No Efectivas': st.inef,
+                '% No Efectivo': `${((st.inef / st.total) * 100).toFixed(1)}%`
+            })), 'Servicios');
+
+            // 4. Producción por Servicios (Técnico x Categoría)
+            const tecServMap = {};
+            data.forEach(d => {
+                if (!tecServMap[d.tecnico]) {
+                    tecServMap[d.tecnico] = {
+                        depto: d.departamento, total: 0, ef: 0, inef: 0,
+                        cats: { INSTALACION: 0, MANTENIMIENTO: 0, MIGRACION: 0, POSTVENTA: 0 },
+                        fechas: new Set()
+                    };
+                }
+                const st = tecServMap[d.tecnico];
+                const cat = normalizarCategoriaServicio(d.servicio);
+                st.cats[cat]++;
+                st.total++;
+                st.fechas.add(d.fecha);
+                if (d.tipoEfectividad === 'EFECTIVO') st.ef++;
+                if (d.tipoEfectividad === 'NO EFECTIVO') st.inef++;
+            });
+            agregarHoja(Object.entries(tecServMap).sort((a, b) => b[1].total - a[1].total).map(([tec, st]) => ({
+                'Técnico / Cuadrilla': tec,
+                'Departamento': st.depto,
+                'Instalación': st.cats.INSTALACION,
+                'Mantenimiento': st.cats.MANTENIMIENTO,
+                'Migración': st.cats.MIGRACION,
+                'Postventa': st.cats.POSTVENTA,
+                'Total SOTs': st.total,
+                'Efectivas': st.ef,
+                'No Efectivas': st.inef,
+                'Prom. Diario': (st.total / Math.max(1, st.fechas.size)).toFixed(1)
+            })), 'Producción Servicios');
+
+            // 5. Técnicos
+            const tecMap = {};
+            data.forEach(d => {
+                if (!tecMap[d.tecnico]) tecMap[d.tecnico] = { total: 0, ef: 0, inef: 0, depto: d.departamento, fechas: new Set() };
+                tecMap[d.tecnico].total++;
+                tecMap[d.tecnico].fechas.add(d.fecha);
+                if (d.tipoEfectividad === 'EFECTIVO') tecMap[d.tecnico].ef++;
+                if (d.tipoEfectividad === 'NO EFECTIVO') tecMap[d.tecnico].inef++;
+            });
+            agregarHoja(Object.entries(tecMap).map(([tec, st]) => ({
+                'Técnico / Cuadrilla': tec,
+                'Departamento': st.depto,
+                'Asignadas': st.total,
+                'Efectivos': st.ef,
+                'No Efectivos': st.inef,
+                '% Efectividad': `${((st.ef / st.total) * 100).toFixed(1)}%`,
+                '% No Efectivo': `${((st.inef / st.total) * 100).toFixed(1)}%`,
+                'Prom. Diario': (st.ef / Math.max(1, st.fechas.size)).toFixed(1)
+            })), 'Técnicos');
+
+            // 6. Productividad por día
+            const diaMap = {};
+            data.forEach(d => {
+                if (!diaMap[d.fecha]) diaMap[d.fecha] = { total: 0, ef: 0, cuadrillas: new Set() };
+                diaMap[d.fecha].total++;
+                if (d.tipoEfectividad === 'EFECTIVO') diaMap[d.fecha].ef++;
+                diaMap[d.fecha].cuadrillas.add(d.tecnico);
+            });
+            agregarHoja(ordenarFechas(Object.keys(diaMap)).map(f => {
+                const st = diaMap[f];
+                const cuadrillasDia = st.cuadrillas.size;
+                return {
+                    'Fecha': f,
+                    'Total SOTs': st.total,
+                    'Efectivas': st.ef,
+                    'Cuadrillas': cuadrillasDia,
+                    'Productividad por Cuadrilla': (st.ef / Math.max(1, cuadrillasDia)).toFixed(1)
+                };
+            }), 'Productividad');
+
+            // 7. Distritos
+            const distMap = {};
+            data.forEach(d => {
+                if (!distMap[d.distrito]) distMap[d.distrito] = { total: 0, depto: d.departamento, zona: d.zona };
+                distMap[d.distrito].total++;
+            });
+            agregarHoja(Object.entries(distMap).sort((a, b) => b[1].total - a[1].total).map(([dist, st]) => ({
+                'Distrito': dist,
+                'Departamento': st.depto,
+                'Zona': st.zona,
+                'Total SOTs': st.total,
+                '% del Total': `${((st.total / total) * 100).toFixed(2)}%`
+            })), 'Distritos');
+
+            // 8. Detalle (todos los registros filtrados, no solo los primeros 300 que se ven en pantalla)
+            agregarHoja(data.map(d => ({
+                'Fecha': d.fecha,
+                'Hoja': d.hoja,
+                'SOT': d.sot,
+                'Técnico': d.tecnico,
+                'Distrito': d.distrito,
+                'Departamento': d.departamento,
+                'Zona': d.zona,
+                'Servicio': d.servicio,
+                'Status': d.status,
+                'Tipo Efectividad': d.tipoEfectividad
+            })), 'Detalle');
+
+            const fecha = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(libro, `Reporte_Nacional_Completo_${fecha}.xlsx`);
+        }
+
+        function renderTecServiciosTable(data) {
+            document.getElementById('lblCountTecServicios').innerText = `${data.length} técnico(s)`;
+            document.getElementById('tbTecServicios').innerHTML = data.map(st => `
+                <tr class="hover:bg-slate-50">
+                    <td class="py-2.5 px-4 font-bold text-[#121C2A]">${st.tecnico}</td>
+                    <td class="py-2.5 px-4 text-slate-500">${st.depto}</td>
+                    <td class="py-2.5 px-4 text-center">${st.instalacion}</td>
+                    <td class="py-2.5 px-4 text-center">${st.mantenimiento}</td>
+                    <td class="py-2.5 px-4 text-center">${st.migracion}</td>
+                    <td class="py-2.5 px-4 text-center">${st.postventa}</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#009EE0]">${st.total}</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#2DCC71]">${st.ef}</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#E74C3C]">${st.inef}</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#0077A8]">${st.promDiario}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderProductividadTable(data) {
+            // Agrupar por fecha
+            // NOTA: Para esta vista de Productividad por Cuadrilla, solo se consideran
+            // los servicios en estado ATENDIDO. Los CERRADO se excluyen del cálculo de
+            // productividad porque en esta vista representan únicamente movilizaciones.
+            const diaMap = {};
+            const cuadrillasTotales = new Set();
+            data.forEach(d => {
+                if (!diaMap[d.fecha]) diaMap[d.fecha] = { total: 0, ef: 0, cuadrillas: new Set() };
+                diaMap[d.fecha].total++;
+                if (d.status === 'ATENDIDO') diaMap[d.fecha].ef++;
+                diaMap[d.fecha].cuadrillas.add(d.tecnico);
+                cuadrillasTotales.add(d.tecnico);
+            });
+
+            const dias = ordenarFechas(Object.keys(diaMap));
+            const totalSots = data.length;
+            const totalEf = data.filter(d => d.status === 'ATENDIDO').length;
+            const diasTrabajados = dias.length;
+            const cantCuadrillas = Math.max(...dias.map(f => diaMap[f].cuadrillas.size), 0);
+            const promDiario = totalEf / Math.max(1, diasTrabajados);
+            const productividadCuadrilla = promDiario / Math.max(1, cantCuadrillas);
+
+            // KPIs resumen del período
+            document.getElementById('kpiProductividad').innerHTML = `
+                <div class="bg-white border border-slate-200 rounded-2xl p-4">
+                    <p class="text-[10px] uppercase text-slate-500 tracking-wider mb-1">SOTs Efectivas (Período)</p>
+                    <p class="text-xl font-bold text-[#121C2A]">${totalEf}</p>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-2xl p-4">
+                    <p class="text-[10px] uppercase text-slate-500 tracking-wider mb-1">Prom. Diario (Efectivas ÷ Días)</p>
+                    <p class="text-xl font-bold text-[#009EE0]">${promDiario.toFixed(1)}</p>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-2xl p-4">
+                    <p class="text-[10px] uppercase text-slate-500 tracking-wider mb-1">Cantidad de Cuadrillas (Máx. Diario)</p>
+                    <p class="text-xl font-bold text-[#121C2A]">${cantCuadrillas}</p>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-2xl p-4">
+                    <p class="text-[10px] uppercase text-slate-500 tracking-wider mb-1">Productividad por Cuadrilla</p>
+                    <p class="text-xl font-bold text-[#2DCC71]">${productividadCuadrilla.toFixed(1)}</p>
+                </div>
+            `;
+
+            // Detalle por día
+            document.getElementById('tbProductividad').innerHTML = dias.map(f => {
+                const st = diaMap[f];
+                const cuadrillasDia = st.cuadrillas.size;
+                const productividadDia = st.ef / Math.max(1, cuadrillasDia);
+                return `
+                <tr class="hover:bg-slate-50">
+                    <td class="py-2.5 px-4 font-bold text-[#121C2A]">${f}</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#009EE0]">${st.total}</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#0077A8]">${st.ef}</td>
+                    <td class="py-2.5 px-4 text-center">${cuadrillasDia}</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#2DCC71]">${productividadDia.toFixed(1)}</td>
+                </tr>
+            `}).join('');
+        }
+
+        function filterTecServiciosTable() {
+            const query = document.getElementById('searchTecServicios').value.toUpperCase();
+            const filtered = window.globalTecServicios.filter(t => t.tecnico.includes(query) || t.depto.includes(query));
+            renderTecServiciosTable(filtered);
+        }
+
+        function renderDetalleTable(data) {
+            document.getElementById('lblCountDetalle').innerText = `${data.length} de ${currentFilteredData.length} registros`;
+            document.getElementById('tbDetalle').innerHTML = data.slice(0, 300).map(d => `
+                <tr class="hover:bg-slate-50">
+                    <td class="py-2 px-3 text-slate-500">${d.fecha}</td>
+                    <td class="py-2 px-3 font-mono font-bold text-[#009EE0]">${d.sot}</td>
+                    <td class="py-2 px-3 text-[#121C2A]">${d.tecnico}</td>
+                    <td class="py-2 px-3">${d.distrito}</td>
+                    <td class="py-2 px-3 text-slate-500">${d.departamento}</td>
+                    <td class="py-2 px-3 text-slate-500">${d.servicio}</td>
+                    <td class="py-2 px-3 font-bold ${d.tipoEfectividad==='EFECTIVO'?'text-[#2DCC71]':(d.tipoEfectividad==='NO EFECTIVO'?'text-[#E74C3C]':'text-[#E67E22]')}">${d.status}</td>
+                    <td class="py-2 px-3"><span class="px-2 py-0.5 rounded text-[10px] ${d.tipoEfectividad==='EFECTIVO'?'bg-[#2DCC71]/10 text-[#2DCC71] border border-[#2DCC71]/20':(d.tipoEfectividad==='NO EFECTIVO'?'bg-[#E74C3C]/10 text-[#E74C3C] border border-[#E74C3C]/20':'bg-[#E67E22]/10 text-[#E67E22] border border-[#E67E22]/20')}">${d.tipoEfectividad}</span></td>
+                </tr>
+            `).join('');
+        }
+
+        function filterTecnicosTable() {
+            const query = document.getElementById('searchTecnico').value.toUpperCase();
+            const filtered = window.globalTecnicos.filter(t => t.tecnico.includes(query) || t.depto.includes(query));
+            renderTecnicosTable(filtered);
+        }
+
+        function filterDetalleTable() {
+            const query = document.getElementById('searchDetalle').value.toUpperCase();
+            const statusFilter = document.getElementById('filterStatus').value;
+
+            const filtered = currentFilteredData.filter(d => {
+                const matchQuery = d.sot.includes(query) || d.tecnico.toUpperCase().includes(query) || d.distrito.includes(query) || d.departamento.includes(query);
+                const matchStatus = statusFilter === 'ALL' || d.status === statusFilter;
+                return matchQuery && matchStatus;
+            });
+            renderDetalleTable(filtered);
+        }
+
+
+        // ===== Motivos: Estado (Col Q) + Sub estado (Col R) =====
+        let chartMotivosObj = null;
+        let motivosEstadoSel = 'TODOS';
+
+        function setMotivosEstado(est) { motivosEstadoSel = est; renderMotivos(); }
+
+        function renderMotivos() {
+            const data = currentFilteredData || [];
+            const total = data.length;
+            const tbody = document.getElementById('tbMotivos');
+            if (!tbody) return;
+
+            // Estado -> sub estado -> cantidad
+            const mapa = {};
+            data.forEach(d => {
+                const e = mapa[d.status] || (mapa[d.status] = { total: 0, tipo: d.tipoEfectividad, subs: {} });
+                e.total++;
+                e.subs[d.subestado] = (e.subs[d.subestado] || 0) + 1;
+            });
+            const estados = Object.entries(mapa).sort((a, b) => b[1].total - a[1].total);
+            if (motivosEstadoSel !== 'TODOS' && !mapa[motivosEstadoSel]) motivosEstadoSel = 'TODOS';
+
+            // Botones de filtro por estado
+            const chip = (val, txt, n) => {
+                const act = motivosEstadoSel === val;
+                return `<button onclick="setMotivosEstado('${val}')" class="px-3 py-1 rounded-full text-[11px] font-bold border transition ${act ? 'bg-[#009EE0] text-white border-[#009EE0]' : 'bg-white text-slate-600 border-slate-200 hover:border-[#009EE0]'}">${txt} <span class="opacity-70">${n}</span></button>`;
+            };
+            document.getElementById('chipsMotivos').innerHTML = chip('TODOS', 'Todos', total) +
+                estados.map(([est, info]) => chip(est, est, info.total)).join('');
+
+            const color = { 'EFECTIVO': 'text-[#2DCC71]', 'NO EFECTIVO': 'text-[#E74C3C]', 'EN PROCESO': 'text-[#E67E22]' };
+            const filas = [];
+            estados.forEach(([est, info]) => {
+                if (motivosEstadoSel !== 'TODOS' && est !== motivosEstadoSel) return;
+                Object.entries(info.subs).sort((a, b) => b[1] - a[1]).forEach(([sub, n]) => {
+                    filas.push({ est, tipo: info.tipo, sub, n, pctTotal: total ? n / total * 100 : 0, pctEstado: n / info.total * 100 });
+                });
+            });
+            tbody.innerHTML = filas.map(f => `
+                <tr class="hover:bg-slate-50">
+                    <td class="py-2.5 px-4 font-bold ${color[f.tipo] || 'text-slate-600'}">${f.est}</td>
+                    <td class="py-2.5 px-4 text-[#121C2A]">${f.sub}</td>
+                    <td class="py-2.5 px-4 text-center font-bold text-[#009EE0]">${f.n}</td>
+                    <td class="py-2.5 px-4 text-center">${f.pctTotal.toFixed(1)}%</td>
+                    <td class="py-2.5 px-4"><div class="flex items-center gap-2"><div class="flex-1 h-1.5 bg-slate-100 rounded"><div class="h-1.5 rounded bg-[#E74C3C]" style="width:${f.pctEstado.toFixed(1)}%"></div></div><span class="w-10 text-right">${f.pctEstado.toFixed(1)}%</span></div></td>
+                </tr>`).join('') || '<tr><td colspan="5" class="py-6 text-center text-slate-400">Sin datos</td></tr>';
+
+            // Gráfico: top 10 motivos NO EFECTIVOS (según el filtro de estado)
+            const top = filas.filter(f => f.tipo === 'NO EFECTIVO').sort((a, b) => b.n - a.n).slice(0, 10);
+            const cv = document.getElementById('chartMotivos');
+            if (chartMotivosObj) chartMotivosObj.destroy();
+            chartMotivosObj = new Chart(cv.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: top.map(f => motivosEstadoSel === 'TODOS' ? `${f.est} · ${f.sub}` : f.sub),
+                    datasets: [{ data: top.map(f => f.n), backgroundColor: top.map(f => f.est === 'RECHAZO' ? '#E74C3C' : f.est === 'REPROGRAMADO' ? '#E67E22' : '#FFB800'), borderRadius: 4, barPercentage: 0.75 }]
+                },
+                options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        x: { ticks: { color: '#64748B' }, grid: { color: '#E2E8F0' } },
+                        y: { ticks: { color: '#64748B', font: { size: 10, weight: 'bold' } }, grid: { display: false } }
+                    },
+                    plugins: { legend: { display: false }, datalabels: { display: true, anchor: 'end', align: 'right', color: '#121C2A', font: { size: 10, weight: 'bold' } } },
+                    layout: { padding: { right: 24 } }
+                }
+            });
+        }
+
+        function switchTab(tab) {
+            ['deptos', 'status', 'motivos', 'servicios', 'tecservicios', 'tecnicos', 'productividad', 'distritos', 'detalle'].forEach(t => {
+                document.getElementById(`tabContent${t.charAt(0).toUpperCase() + t.slice(1)}`).classList.add('hidden');
+                const btn = document.getElementById(`tabBtn${t.charAt(0).toUpperCase() + t.slice(1)}`);
+                btn.classList.remove('border-[#009EE0]', 'text-[#009EE0]', 'bg-[#A1E2F5]/40');
+                btn.classList.add('border-transparent', 'text-slate-500');
+            });
+
+            document.getElementById(`tabContent${tab.charAt(0).toUpperCase() + tab.slice(1)}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`tabBtn${tab.charAt(0).toUpperCase() + tab.slice(1)}`);
+            activeBtn.classList.remove('border-transparent', 'text-slate-500');
+            activeBtn.classList.add('border-[#009EE0]', 'text-[#009EE0]', 'bg-[#A1E2F5]/40');
+            if (tab === 'motivos') renderMotivos();
+        }
+
+        function resetDashboard() {
+            rawConsolidatedData = [];
+            currentFilteredData = [];
+            filesProcessed = [];
+            document.getElementById('dashboardContent').classList.add('hidden');
+            document.getElementById('btnReset').classList.add('hidden');
+            document.getElementById('btnDescargarCompleto').classList.add('hidden');
+            document.getElementById('listaHojas').innerHTML = '';
+            hojasSeleccionadas = new Set();
+            hojasDisponibles = [];
+            actualizarLabelHoja();
+            document.getElementById('listaDeptos').innerHTML = '';
+            deptosSeleccionados = new Set();
+            deptosDisponibles = [];
+            actualizarLabelDepto();
+            document.getElementById('listaDistritos').innerHTML = '';
+            distritosSeleccionados = new Set();
+            distritosDisponibles = [];
+            actualizarLabelDistrito();
+            document.getElementById('listaTecnicos').innerHTML = '';
+            tecnicosSeleccionados = new Set();
+            tecnicosDisponibles = [];
+            actualizarLabelTecnico();
+            document.getElementById('listaServicios').innerHTML = '';
+            serviciosSeleccionados = new Set();
+            serviciosDisponibles = [];
+            actualizarLabelServicio();
+            fileInput.value = '';
+        }
+
+        function showLoading(show, text = "") {
+            document.getElementById('loadingState').classList.toggle('hidden', !show);
+            if (text) document.getElementById('loadingText').innerText = text;
+        }
+    </script>
+</body>
+</html>
